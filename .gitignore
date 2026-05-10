@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# local Kalshi sitemap / catalog dump from scripts/discover-kalshi.mjs (regenerable)
+/tmp
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
