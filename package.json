@@ -6,10 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:push": "drizzle-kit push --force",
+    "db:studio": "drizzle-kit studio",
+    "kalshi:discover": "node scripts/discover-kalshi.mjs",
+    "kalshi:catalog": "node scripts/build-catalog.mjs",
+    "kalshi:refresh": "node scripts/refresh-kalshi.mjs"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "d3-geo": "^3.1.1",
+    "drizzle-orm": "^0.45.2",
     "next": "16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
@@ -23,6 +30,8 @@
     "@types/react-dom": "^19",
     "@types/topojson-client": "^3.1.5",
     "@types/topojson-specification": "^1.0.5",
+    "dotenv": "^17.4.2",
+    "drizzle-kit": "^0.31.10",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "tailwindcss": "^4",
