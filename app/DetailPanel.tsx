@@ -72,28 +72,16 @@ export default function DetailPanel({
   const meta = STATES_BY_FIPS[selected.fips];
   if (!meta) return null;
 
-  const senate = SENATE_2026_STATES.has(meta.abbr) ? senateProbs[meta.abbr] : undefined;
-
-  // Per-state House summary
-  const stateDistricts = boundaries.districts.filter(
-    (d) => d.statefips === meta.fips,
-  );
-  let dLead = 0;
-  for (const d of stateDistricts) {
-    const p = districtProbs[d.geoid];
-    if (p !== undefined && p >= 0.5) dLead++;
-  }
-  const rLead = stateDistricts.length - dLead;
-
+  const senate = SENATE_2026_STATES.has(meta.abbr)
+    ? senateProbs[meta.abbr]
+    : undefined;
   const senateTicker = SENATE_TICKERS[meta.abbr];
-
   const hasSenate = SENATE_2026_STATES.has(meta.abbr) && senateTicker;
 
   return (
     <div className="px-6 py-5">
       <PanelHeader title={meta.name} subtitle={meta.abbr} onClose={onClose} />
 
-      {/* Senate race section */}
       <section className="mt-2">
         <RaceRow
           label="senate · 2026"
@@ -105,39 +93,6 @@ export default function DetailPanel({
           }
         />
         {hasSenate && <HistoryChart eventTicker={senateTicker} />}
-      </section>
-
-      {/* House summary — boxed, more breathing room */}
-      <section className="mt-6 border-t border-[var(--color-rule)] pt-4">
-        <div className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)] mb-2">
-          house · {stateDistricts.length} district
-          {stateDistricts.length === 1 ? "" : "s"}
-        </div>
-        <div className="flex items-baseline gap-4 text-sm">
-          <span className="flex items-baseline gap-1.5">
-            <span
-              className="font-serif text-xl tabular-nums"
-              style={{ color: partyInk("D") }}
-            >
-              {dLead}
-            </span>
-            <span className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]">
-              D-leading
-            </span>
-          </span>
-          <span className="text-[var(--color-ink-mute)]">/</span>
-          <span className="flex items-baseline gap-1.5">
-            <span
-              className="font-serif text-xl tabular-nums"
-              style={{ color: partyInk("R") }}
-            >
-              {rLead}
-            </span>
-            <span className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]">
-              R-leading
-            </span>
-          </span>
-        </div>
       </section>
 
       {hasSenate && <KalshiLink ticker={senateTicker} />}

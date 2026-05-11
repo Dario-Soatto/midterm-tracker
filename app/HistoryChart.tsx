@@ -95,8 +95,8 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
   // SVG layout — viewBox stretched to container width via preserveAspectRatio=none.
   const W = 320;
   const H = height;
-  const padL = 8;
-  const padR = 8;
+  const padL = 24; // room for y-axis labels (0% / 50% / 100%)
+  const padR = 6;
   const padT = 6;
   const padB = 14; // room for x-axis ticks
   const innerW = W - padL - padR;
@@ -162,6 +162,30 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
           stroke="var(--color-rule)"
           strokeWidth={0.5}
         />
+        {/* y-axis ticks: 0% / 50% / 100% */}
+        {[0, 0.5, 1].map((p) => (
+          <g key={p}>
+            <text
+              x={padL - 4}
+              y={yOf(p) + 3}
+              textAnchor="end"
+              fontSize={8}
+              fontFamily="var(--font-mono)"
+              fill="var(--color-ink-mute)"
+              style={{ letterSpacing: 0.5 }}
+            >
+              {(p * 100).toFixed(0)}%
+            </text>
+            <line
+              x1={padL - 2}
+              x2={padL}
+              y1={yOf(p)}
+              y2={yOf(p)}
+              stroke="var(--color-ink-mute)"
+              strokeWidth={0.4}
+            />
+          </g>
+        ))}
         {/* mid line at 0.5 */}
         <line
           x1={padL}
