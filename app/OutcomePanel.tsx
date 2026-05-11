@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { partyInk } from "@/lib/colors";
 import {
   BUCKET_COLOR_VAR,
   BUCKET_LABEL,
@@ -76,6 +77,23 @@ export default function OutcomePanel({
   const total = VIEW_TOTAL[view];
   const majorityAt = VIEW_MAJORITY[view];
 
+  // Majority probabilities: D-majority = P(D total seats ≥ majority threshold)
+  //                        R-majority = P(R total seats ≥ majority threshold)
+  // House (435, maj=218): symmetric, no tie.
+  // Senate (100, maj=51): symmetric, with P(tie) = pmf[50 − baseD]. We use a
+  // strict-majority threshold for both so the two numbers don't double-count
+  // a 50-50 split.
+  const strictMajority = view === "senate" ? 51 : majorityAt;
+  let pDmaj = 0;
+  let pRmaj = 0;
+  for (let k = 0; k < data.pmf.length; k++) {
+    const dSeats = k + data.baseDOffset;
+    const rSeats = total - dSeats;
+    if (dSeats >= strictMajority) pDmaj += data.pmf[k];
+    else if (rSeats >= strictMajority) pRmaj += data.pmf[k];
+  }
+  const pTie = Math.max(0, 1 - pDmaj - pRmaj);
+
   const dMean = data.summary.mean + data.baseDOffset;
   const rMean = total - dMean;
   const winnerLabel =
@@ -93,6 +111,28 @@ export default function OutcomePanel({
       </div>
 
       <div className="border border-[var(--color-rule)] bg-[var(--color-paper-warm)] px-6 py-5">
+        {/* Probability of each party winning a strict majority */}
+        <div className="flex items-baseline gap-4 mb-3 text-[10px] tracking-widest uppercase">
+          <span className="text-[var(--color-ink-mute)]">
+            chance of majority
+          </span>
+          <span style={{ color: partyInk("D") }} className="font-mono tabular-nums">
+            D {(pDmaj * 100).toFixed(pDmaj >= 0.995 || pDmaj <= 0.005 ? 1 : 0)}%
+          </span>
+          <span className="text-[var(--color-ink-mute)]">·</span>
+          <span style={{ color: partyInk("R") }} className="font-mono tabular-nums">
+            R {(pRmaj * 100).toFixed(pRmaj >= 0.995 || pRmaj <= 0.005 ? 1 : 0)}%
+          </span>
+          {pTie > 0.005 && (
+            <>
+              <span className="text-[var(--color-ink-mute)]">·</span>
+              <span className="text-[var(--color-ink-soft)] font-mono tabular-nums">
+                tie {(pTie * 100).toFixed(1)}%
+              </span>
+            </>
+          )}
+        </div>
+
         <div className="flex items-baseline gap-6 mb-5 flex-wrap">
           <div className="flex items-baseline gap-2">
             <span
@@ -351,7 +391,9 @@ function Density({
         strokeWidth={0.5}
       />
 
-      {/* density bars */}
+      {/* density bars — full-height invisible hit areas behind visible bars
+          so hovering anywhere over a column shows the tooltip, not just on
+          the tiny tail of a low-probability bar. */}
       {pmf.map((p, k) => {
         if (p < minMass / 5) return null;
         const x = xFor(k);
@@ -359,16 +401,36 @@ function Density({
         const seatCount = k + baseDOffset;
         const isD = seatCount >= majorityAt;
         const h = (p / maxP) * innerH;
+        const pctLabel =
+          p >= 0.001
+            ? `${(p * 100).toFixed(p * 100 < 10 ? 1 : 0)}%`
+            : `<0.1%`;
+        const tooltip = `${seatCount} D seats · ${pctLabel} chance${
+          seatCount >= majorityAt ? " · D majority" : " · R majority"
+        }`;
         return (
-          <rect
-            key={k}
-            x={x - barW / 2}
-            y={H - padBottom - h}
-            width={barW}
-            height={h}
-            fill={isD ? "var(--color-dem)" : "var(--color-rep)"}
-            opacity={0.85}
-          />
+          <g key={k}>
+            <rect
+              x={x - barW / 2}
+              y={H - padBottom - h}
+              width={barW}
+              height={h}
+              fill={isD ? "var(--color-dem)" : "var(--color-rep)"}
+              opacity={0.85}
+            />
+            {/* full-column hover hit area (transparent, just to widen the
+                hover target so the native <title> tooltip surfaces even on
+                low-probability bars) */}
+            <rect
+              x={x - barW / 2}
+              y={padTop}
+              width={barW}
+              height={innerH}
+              fill="transparent"
+            >
+              <title>{tooltip}</title>
+            </rect>
+          </g>
         );
       })}
 
