@@ -35,12 +35,22 @@ const VIEW_TOTAL: Record<View, number> = {
 };
 
 /**
- * Senate seats already locked in (not on the ballot in 2026):
- *   Class 1 holding (32: 33 elected 2024 minus Vance/OH special)
- *   Class 3 holding (33: 34 elected 2022 minus Rubio/FL special)
- * = 65 holding. Rough D/R split below; will be replaced with live counts.
+ * Senate seats already locked in (not on the 2026 ballot).
+ *
+ * 119th Congress entering 2026: 53 R · 45 D · 2 I (both caucus D).
+ * Up in 2026: 33 Class-2 (20 R · 13 D) plus 2 Class-3 specials — Florida
+ * (Rubio → Moody, R) and Ohio (Vance → Husted, R). So:
+ *
+ *   Holding R       = 53 − 20 − 2 = 31
+ *   Holding D       = 45 − 13      = 32
+ *   Holding I (D-c) =               2
+ *   ───────────────────────────────
+ *   Total holding   =              65
+ *
+ * The bar bundles independents with their caucus, so D = 34, R = 31.
+ * Verified May 2026 against Wikipedia and 270toWin.
  */
-const SENATE_BASE = { D: 32, R: 33 };
+const SENATE_BASE = { D: 34, R: 31 };
 
 export default function OutcomePanel({
   view,
