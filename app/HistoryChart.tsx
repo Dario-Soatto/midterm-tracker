@@ -20,15 +20,20 @@ type Props = {
  * Lazy-fetches `/api/history/<event>` on mount (or when the ticker changes);
  * the API route caches Kalshi responses for 5 min via Next's fetch cache.
  */
+/** Selectable window sizes (days). Kept in sync with ALLOWED_DAYS in the API. */
+const WINDOW_OPTIONS = [7, 30, 90] as const;
+type WindowDays = (typeof WINDOW_OPTIONS)[number];
+
 export default function HistoryChart({ eventTicker, height = 110 }: Props) {
   const [points, setPoints] = useState<Point[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [days, setDays] = useState<WindowDays>(30);
 
   useEffect(() => {
     let cancelled = false;
     setPoints(null);
     setErr(null);
-    fetch(`/api/history/${encodeURIComponent(eventTicker)}`)
+    fetch(`/api/history/${encodeURIComponent(eventTicker)}?days=${days}`)
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
@@ -41,7 +46,7 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [eventTicker]);
+  }, [eventTicker, days]);
 
   const stats = useMemo(() => {
     if (!points || points.length === 0) return null;
@@ -56,12 +61,14 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
     };
   }, [points]);
 
+  const toggle = (
+    <WindowToggle value={days} onChange={setDays} />
+  );
+
   if (err) {
     return (
       <PanelChrome>
-        <span className="text-[10px] text-[var(--color-ink-mute)] italic">
-          history unavailable
-        </span>
+        <PanelHeader toggle={toggle} status="history unavailable" />
       </PanelChrome>
     );
   }
@@ -69,9 +76,7 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
   if (!points) {
     return (
       <PanelChrome>
-        <span className="text-[10px] tracking-wider text-[var(--color-ink-mute)]">
-          loading 30-day history…
-        </span>
+        <PanelHeader toggle={toggle} status={`loading ${days}-day history…`} />
       </PanelChrome>
     );
   }
@@ -79,9 +84,10 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
   if (points.length < 2) {
     return (
       <PanelChrome>
-        <span className="text-[10px] text-[var(--color-ink-mute)] italic">
-          not enough trading history yet
-        </span>
+        <PanelHeader
+          toggle={toggle}
+          status="not enough trading history yet"
+        />
       </PanelChrome>
     );
   }
@@ -96,11 +102,14 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
   const innerW = W - padL - padR;
   const innerH = H - padT - padB;
 
-  const tMin = points[0].ts;
-  const tMax = points[points.length - 1].ts;
-  const tSpan = Math.max(1, tMax - tMin);
+  // X-axis is anchored to the requested window (now → now − days·86400),
+  // not to the data extent. That way day-ticks land at consistent positions
+  // even when a market only has a few days of trades inside a 90d window.
+  const nowTs = Math.floor(Date.now() / 1000);
+  const startTs = nowTs - days * 86400;
+  const tSpan = Math.max(1, nowTs - startTs);
 
-  const xOf = (ts: number) => padL + ((ts - tMin) / tSpan) * innerW;
+  const xOf = (ts: number) => padL + ((ts - startTs) / tSpan) * innerW;
   const yOf = (p: number) => padT + (1 - p) * innerH;
 
   // Polyline paths
@@ -114,12 +123,13 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
   const pathD = pathFor((pt) => pt.p);
   const pathR = pathFor((pt) => 1 - pt.p);
 
-  // x-axis ticks: -30d / -20d / -10d / now
+  // x-axis ticks: 4 evenly-spaced labels covering the requested window
   const oneDay = 86400;
+  const step = days / 3; // 7 → ~2.3d, 30 → 10d, 90 → 30d
   const dayTicks: { ts: number; label: string }[] = [];
-  for (let d = 30; d >= 0; d -= 10) {
-    const ts = tMax - d * oneDay;
-    if (ts < tMin - oneDay) continue;
+  for (let i = 3; i >= 0; i--) {
+    const d = Math.round(i * step);
+    const ts = nowTs - d * oneDay;
     dayTicks.push({ ts, label: d === 0 ? "now" : `−${d}d` });
   }
 
@@ -128,18 +138,14 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
 
   return (
     <PanelChrome>
-      <div className="flex items-baseline justify-between text-[10px] tracking-wider text-[var(--color-ink-mute)] mb-1">
-        <span>30-day history</span>
-        <span className="font-mono tabular-nums">
-          <span style={{ color: partyInk("D") }}>
-            D {(stats!.dLast * 100).toFixed(0)}%
-          </span>
-          <span className="text-[var(--color-ink-mute)] mx-2">·</span>
-          <span style={{ color: partyInk("R") }}>
-            R {(stats!.rLast * 100).toFixed(0)}%
-          </span>
-        </span>
-      </div>
+      <PanelHeader
+        toggle={toggle}
+        currents={{
+          d: stats!.dLast,
+          r: stats!.rLast,
+        }}
+      />
+
       <svg
         viewBox={`0 0 ${W} ${H}`}
         className="w-full h-auto block"
@@ -227,4 +233,63 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
 
 function PanelChrome({ children }: { children: React.ReactNode }) {
   return <div className="mt-4">{children}</div>;
+}
+
+function PanelHeader({
+  toggle,
+  currents,
+  status,
+}: {
+  toggle: React.ReactNode;
+  currents?: { d: number; r: number };
+  status?: string;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3 text-[10px] tracking-wider text-[var(--color-ink-mute)] mb-1">
+      {toggle}
+      {status && (
+        <span className="italic truncate">{status}</span>
+      )}
+      {currents && (
+        <span className="font-mono tabular-nums">
+          <span style={{ color: partyInk("D") }}>
+            D {(currents.d * 100).toFixed(0)}%
+          </span>
+          <span className="text-[var(--color-ink-mute)] mx-2">·</span>
+          <span style={{ color: partyInk("R") }}>
+            R {(currents.r * 100).toFixed(0)}%
+          </span>
+        </span>
+      )}
+    </div>
+  );
+}
+
+function WindowToggle({
+  value,
+  onChange,
+}: {
+  value: WindowDays;
+  onChange: (v: WindowDays) => void;
+}) {
+  return (
+    <div className="flex">
+      {WINDOW_OPTIONS.map((d) => {
+        const active = value === d;
+        return (
+          <button
+            key={d}
+            onClick={() => onChange(d)}
+            className={`px-1.5 py-0.5 text-[9px] tracking-widest uppercase border transition-colors ${
+              active
+                ? "bg-[var(--color-ink)] text-[var(--color-paper)] border-[var(--color-ink)]"
+                : "border-[var(--color-rule)] text-[var(--color-ink-soft)] hover:text-[var(--color-ink)] hover:border-[var(--color-ink-soft)]"
+            } -ml-px first:ml-0`}
+          >
+            {d}d
+          </button>
+        );
+      })}
+    </div>
+  );
 }

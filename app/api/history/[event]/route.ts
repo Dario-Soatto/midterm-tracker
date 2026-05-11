@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 import { kalshiFetchRetrying } from "@/lib/kalshi/auth";
 
-// Cache Kalshi candlestick responses for 5 minutes — clicking a race twice
-// within that window won't refetch.
-export const revalidate = 300;
-export const dynamic = "force-static";
+// Whitelist of window sizes the UI exposes; anything else falls back to 30d.
+const ALLOWED_DAYS = new Set([7, 30, 90]);
+const DEFAULT_DAYS = 30;
 
-/** Days of history to fetch. */
-const WINDOW_DAYS = 30;
 /** Candle resolution in minutes (60 = hourly). */
 const PERIOD_MIN = 60;
 
@@ -29,7 +26,7 @@ type Candle = {
 };
 
 export async function GET(
-  _req: Request,
+  req: Request,
   context: { params: Promise<{ event: string }> },
 ) {
   const { event } = await context.params;
@@ -39,8 +36,12 @@ export async function GET(
   const dMarket = `${eventTicker}-D`;
   const series = seriesFromEvent(eventTicker);
 
+  const url = new URL(req.url);
+  const requested = parseInt(url.searchParams.get("days") ?? "", 10);
+  const days = ALLOWED_DAYS.has(requested) ? requested : DEFAULT_DAYS;
+
   const end = Math.floor(Date.now() / 1000);
-  const start = end - WINDOW_DAYS * 86400;
+  const start = end - days * 86400;
 
   try {
     const data = await kalshiFetchRetrying<{ candlesticks: Candle[] }>(
@@ -68,6 +69,7 @@ export async function GET(
       eventTicker,
       series,
       market: dMarket,
+      days,
       points,
     });
   } catch (e) {
