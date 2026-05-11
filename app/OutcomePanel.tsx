@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { partyInk } from "@/lib/colors";
 import {
   BUCKET_COLOR_VAR,
@@ -389,7 +389,29 @@ function Density({
   const majorityX = xFor(majorityAt - baseDOffset);
   const majorityVisible = majorityAt >= xMin && majorityAt <= xMax;
 
+  // Hover state — index into pmf of the currently-hovered bar (null if none).
+  const [hoverK, setHoverK] = useState<number | null>(null);
+  const hoverPt =
+    hoverK !== null
+      ? {
+          k: hoverK,
+          p: pmf[hoverK],
+          seatCount: hoverK + baseDOffset,
+          xPct: (xFor(hoverK) / W) * 100,
+        }
+      : null;
+  const hoverLabel = hoverPt
+    ? `${hoverPt.seatCount} D seats · ${
+        hoverPt.p >= 0.001
+          ? `${(hoverPt.p * 100).toFixed(hoverPt.p * 100 < 10 ? 1 : 0)}% chance`
+          : "<0.1% chance"
+      } · ${
+        hoverPt.seatCount >= majorityAt ? "D majority" : "R majority"
+      }`
+    : null;
+
   return (
+    <div className="relative">
     <svg
       viewBox={`0 0 ${W} ${H}`}
       className="w-full h-auto block"
@@ -407,8 +429,8 @@ function Density({
       />
 
       {/* density bars — full-height invisible hit areas behind visible bars
-          so hovering anywhere over a column shows the tooltip, not just on
-          the tiny tail of a low-probability bar. */}
+          so hovering anywhere over a column highlights it, not just the tiny
+          tail of a low-probability bar. */}
       {pmf.map((p, k) => {
         if (p < minMass / 5) return null;
         const x = xFor(k);
@@ -416,13 +438,7 @@ function Density({
         const seatCount = k + baseDOffset;
         const isD = seatCount >= majorityAt;
         const h = (p / maxP) * innerH;
-        const pctLabel =
-          p >= 0.001
-            ? `${(p * 100).toFixed(p * 100 < 10 ? 1 : 0)}%`
-            : `<0.1%`;
-        const tooltip = `${seatCount} D seats · ${pctLabel} chance${
-          seatCount >= majorityAt ? " · D majority" : " · R majority"
-        }`;
+        const isHover = hoverK === k;
         return (
           <g key={k}>
             <rect
@@ -431,12 +447,11 @@ function Density({
               width={barW}
               height={h}
               fill={isD ? "var(--color-dem)" : "var(--color-rep)"}
-              opacity={0.85}
+              opacity={isHover ? 1 : 0.85}
             />
             {/* full-column hover hit area. SVG ignores pointer events on
                 transparent paint by default (visiblePainted), so we have to
-                explicitly opt in with pointerEvents="all" for the <title>
-                tooltip to surface. */}
+                opt in via pointer-events="all". */}
             <rect
               x={x - barW / 2}
               y={padTop}
@@ -444,9 +459,10 @@ function Density({
               height={innerH}
               fill="transparent"
               pointerEvents="all"
-            >
-              <title>{tooltip}</title>
-            </rect>
+              onMouseEnter={() => setHoverK(k)}
+              onMouseLeave={() => setHoverK((cur) => (cur === k ? null : cur))}
+              style={{ cursor: "default" }}
+            />
           </g>
         );
       })}
@@ -502,6 +518,22 @@ function Density({
         </g>
       ))}
     </svg>
+
+    {/* floating tooltip — positioned by % of container width so it lines up
+        with the hovered SVG column regardless of viewport scale. */}
+    {hoverPt && hoverLabel && (
+      <div
+        className="pointer-events-none absolute -translate-x-1/2 -translate-y-full bg-[var(--color-ink)] text-[var(--color-paper)] text-[10px] tracking-wider px-2 py-1 font-mono whitespace-nowrap shadow-[0_4px_12px_-4px_rgba(26,26,26,0.4)]"
+        style={{
+          left: `${hoverPt.xPct}%`,
+          top: `${(padTop / H) * 100}%`,
+          marginTop: -6,
+        }}
+      >
+        {hoverLabel}
+      </div>
+    )}
+    </div>
   );
 }
 
