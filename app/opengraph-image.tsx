@@ -86,37 +86,55 @@ export default async function Image() {
             flexDirection: "column",
             justifyContent: "center",
             flex: 1,
-            gap: 28,
-            paddingTop: 24,
+            gap: 22,
+            paddingTop: 8,
           }}
         >
           <div
             style={{
               display: "flex",
-              fontFamily: "Newsreader",
-              fontSize: 132,
-              lineHeight: 1,
-              letterSpacing: -3,
-              color: ink,
+              flexDirection: "column",
             }}
           >
-            U.S. midterms
-            <span style={{ color: inkMute }}>&nbsp;·&nbsp;2026</span>
+            <div
+              style={{
+                display: "flex",
+                fontFamily: "Newsreader",
+                fontSize: 46,
+                lineHeight: 1,
+                color: inkSoft,
+                letterSpacing: 0.5,
+              }}
+            >
+              U.S. midterm elections
+            </div>
+            <div
+              style={{
+                display: "flex",
+                fontFamily: "Newsreader",
+                fontSize: 168,
+                lineHeight: 0.95,
+                letterSpacing: -5,
+                color: ink,
+                marginTop: 4,
+              }}
+            >
+              2026
+            </div>
           </div>
 
           <div
             style={{
               display: "flex",
               fontFamily: "Newsreader",
-              fontSize: 34,
+              fontSize: 30,
               lineHeight: 1.3,
               color: inkSoft,
               maxWidth: 980,
             }}
           >
             Live prediction-market odds for every U.S. House district and
-            Senate race — priced from Kalshi, aggregated into a
-            seat-distribution forecast.
+            Senate race — priced from Kalshi.
           </div>
 
           {/* split bar visual */}
@@ -125,7 +143,6 @@ export default async function Image() {
               display: "flex",
               alignItems: "center",
               gap: 18,
-              marginTop: 12,
               fontSize: 22,
               letterSpacing: 2,
               textTransform: "uppercase",
