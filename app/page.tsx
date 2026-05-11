@@ -1,6 +1,10 @@
 import Dashboard from "./Dashboard";
 import { getRaces } from "@/lib/data/races";
 
+// Re-render the page at most every 60s so visitors see fresh DB rows.
+// The cron route also calls revalidatePath("/") for an immediate flush.
+export const revalidate = 60;
+
 export default async function HomePage() {
   const races = await getRaces();
   const fetchedLabel =

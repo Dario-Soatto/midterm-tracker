@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { revalidateTag } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { sql } from "drizzle-orm";
 import { db } from "@/lib/db/client";
 import { prices } from "@/lib/db/schema";
@@ -79,11 +79,13 @@ export async function GET(req: NextRequest) {
       },
     });
 
-  // Bust the page-side `unstable_cache` so visitors immediately see fresh
-  // numbers; otherwise getRaces() would keep returning the stale cached
-  // snapshot for up to its `revalidate` window. Next 16 added a required
-  // `profile` second arg — "max" means the longest-lived caches still flush.
+  // Bust the page-side caches so visitors immediately see fresh numbers:
+  //   revalidateTag("kalshi", "max") — flushes the unstable_cache data layer
+  //   revalidatePath("/")            — flushes the cached HTML for the
+  //                                   homepage, so the static-rendered page
+  //                                   re-renders on next request.
   revalidateTag("kalshi", "max");
+  revalidatePath("/");
 
   return NextResponse.json({
     ok: true,
