@@ -194,7 +194,7 @@ export default function OutcomePanel({
           majorityAt={majorityAt}
         />
 
-        <div className="mt-5">
+        <div className="mt-7">
           <BucketBar
             segments={buildSegments(
               data.buckets,
@@ -202,6 +202,7 @@ export default function OutcomePanel({
               data.baseROffset,
             )}
             total={total}
+            majorityAt={majorityAt}
           />
         </div>
 
@@ -294,39 +295,60 @@ function BucketLegendCell({ segment }: { segment: Segment }) {
 function BucketBar({
   segments,
   total,
+  majorityAt,
 }: {
   segments: Segment[];
   total: number;
+  majorityAt: number;
 }) {
   const widthFor = (count: number) => `${(count / total) * 100}%`;
+  const majorityPct = (majorityAt / total) * 100;
   return (
-    <div className="relative h-7 flex w-full border border-[var(--color-rule)]">
-      {segments.map((s) =>
-        s.count === 0 ? null : (
-          <div
-            key={s.key}
-            className="h-full relative"
-            style={{
-              width: widthFor(s.count),
-              background: s.color,
-            }}
-            title={`${s.label}: ${s.count}`}
-          >
-            {s.count >= Math.max(8, total * 0.04) && (
-              <span
-                className="absolute inset-0 flex items-center justify-center text-[10px] font-mono tabular-nums"
-                style={{
-                  color: s.isDark
-                    ? "var(--color-paper)"
-                    : "var(--color-ink)",
-                }}
-              >
-                {s.count}
-              </span>
-            )}
-          </div>
-        ),
-      )}
+    <div className="relative pt-3.5">
+      <div
+        className="absolute top-0 text-[9px] font-mono tracking-wider text-[var(--color-ink)] whitespace-nowrap"
+        style={{ left: `${majorityPct}%`, transform: "translateX(-50%)" }}
+      >
+        majority {majorityAt}
+      </div>
+      <div className="h-7 flex w-full border border-[var(--color-rule)]">
+        {segments.map((s) =>
+          s.count === 0 ? null : (
+            <div
+              key={s.key}
+              className="h-full relative"
+              style={{
+                width: widthFor(s.count),
+                background: s.color,
+              }}
+              title={`${s.label}: ${s.count}`}
+            >
+              {s.count >= Math.max(8, total * 0.04) && (
+                <span
+                  className="absolute inset-0 flex items-center justify-center text-[10px] font-mono tabular-nums"
+                  style={{
+                    color: s.isDark
+                      ? "var(--color-paper)"
+                      : "var(--color-ink)",
+                  }}
+                >
+                  {s.count}
+                </span>
+              )}
+            </div>
+          ),
+        )}
+      </div>
+      {/* vertical majority line — extends a little past the bar top and bottom */}
+      <div
+        className="absolute w-px bg-[var(--color-ink)] pointer-events-none"
+        style={{
+          left: `${majorityPct}%`,
+          top: "12px",
+          bottom: "-3px",
+          transform: "translateX(-0.5px)",
+        }}
+      />
     </div>
   );
 }
@@ -358,10 +380,11 @@ function Density({
   const xMin = Math.max(0, lo - pad) + baseDOffset;
   const xMax = Math.min(pmf.length - 1, hi + pad) + baseDOffset;
 
-  // SVG dims (viewBox); scaled by container
+  // SVG dims (viewBox); scaled by container. padTop leaves room for the
+  // "majority 218" label that floats just above the dashed threshold line.
   const W = 1000;
   const H = 200;
-  const padTop = 10;
+  const padTop = 24;
   const padBottom = 26;
   const innerH = H - padTop - padBottom;
 
@@ -467,9 +490,20 @@ function Density({
         );
       })}
 
-      {/* majority threshold */}
+      {/* majority threshold — label floats above the line, line spans the bars */}
       {majorityVisible && (
         <>
+          <text
+            x={majorityX}
+            y={12}
+            textAnchor="middle"
+            fontSize={9}
+            fontFamily="var(--font-mono)"
+            fill="var(--color-ink)"
+            style={{ letterSpacing: 1 }}
+          >
+            majority {majorityAt}
+          </text>
           <line
             x1={majorityX}
             x2={majorityX}
@@ -479,17 +513,6 @@ function Density({
             strokeWidth={1.2}
             strokeDasharray="3 3"
           />
-          <text
-            x={majorityX}
-            y={padTop + 2}
-            textAnchor="middle"
-            fontSize={9}
-            fontFamily="var(--font-mono)"
-            fill="var(--color-ink)"
-            style={{ letterSpacing: 1 }}
-          >
-            majority {majorityAt}
-          </text>
         </>
       )}
 

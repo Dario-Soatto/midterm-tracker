@@ -11,6 +11,21 @@ type Props = {
   height?: number;
 };
 
+const MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const fmtTickDate = (ts: number) => {
+  const d = new Date(ts * 1000);
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+};
+const fmtHoverDate = (ts: number) => {
+  const d = new Date(ts * 1000);
+  const hh = d.getHours().toString().padStart(2, "0");
+  const mm = d.getMinutes().toString().padStart(2, "0");
+  return `${MONTHS[d.getMonth()]} ${d.getDate()} · ${hh}:${mm}`;
+};
+
 /**
  * Two-line price history for one Kalshi event over the last 30 days.
  * P(D) in blue and P(R) = 1 − P(D) in red — the standard election-tracker
@@ -28,11 +43,13 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
   const [points, setPoints] = useState<Point[] | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [days, setDays] = useState<WindowDays>(30);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setPoints(null);
     setErr(null);
+    setHoverIdx(null);
     fetch(`/api/history/${encodeURIComponent(eventTicker)}?days=${days}`)
       .then((r) => r.json())
       .then((data) => {
@@ -123,34 +140,59 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
   const pathD = pathFor((pt) => pt.p);
   const pathR = pathFor((pt) => 1 - pt.p);
 
-  // x-axis ticks: 4 evenly-spaced labels covering the requested window
+  // x-axis ticks: 4 evenly-spaced dated labels covering the requested window
   const oneDay = 86400;
   const step = days / 3; // 7 → ~2.3d, 30 → 10d, 90 → 30d
   const dayTicks: { ts: number; label: string }[] = [];
   for (let i = 3; i >= 0; i--) {
     const d = Math.round(i * step);
     const ts = nowTs - d * oneDay;
-    dayTicks.push({ ts, label: d === 0 ? "now" : `−${d}d` });
+    dayTicks.push({ ts, label: fmtTickDate(ts) });
   }
 
   const midY = yOf(0.5);
   const lastPt = points[points.length - 1];
+  const hoverPt = hoverIdx !== null ? points[hoverIdx] : null;
+  const displayed = hoverPt ?? lastPt;
+
+  // Map a mouse event over the SVG to the nearest data point's index.
+  // The SVG renders at the container's width with preserveAspectRatio="none",
+  // so pixel-x → viewBox-x is a straight linear remap by rect.width.
+  const onMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xViewBox = ((e.clientX - rect.left) / rect.width) * W;
+    if (xViewBox < padL || xViewBox > padL + innerW) {
+      setHoverIdx(null);
+      return;
+    }
+    const ts = startTs + ((xViewBox - padL) / innerW) * tSpan;
+    let best = 0;
+    let bestDiff = Infinity;
+    for (let i = 0; i < points.length; i++) {
+      const diff = Math.abs(points[i].ts - ts);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        best = i;
+      }
+    }
+    setHoverIdx(best);
+  };
 
   return (
     <PanelChrome>
       <PanelHeader
         toggle={toggle}
-        currents={{
-          d: stats!.dLast,
-          r: stats!.rLast,
-        }}
+        currents={{ d: displayed.p, r: 1 - displayed.p }}
+        dateLabel={hoverPt ? fmtHoverDate(hoverPt.ts) : undefined}
       />
 
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        className="w-full h-auto block"
+        className="w-full h-auto block cursor-crosshair"
         preserveAspectRatio="none"
         style={{ maxHeight: H }}
+        onMouseMove={onMouseMove}
+        onMouseLeave={() => setHoverIdx(null)}
       >
         {/* inner-box frame */}
         <rect
@@ -237,19 +279,33 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
           strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
         />
-        {/* endpoint dots — one per line */}
-        <circle
-          cx={xOf(lastPt.ts)}
-          cy={yOf(1 - lastPt.p)}
-          r={2.4}
-          fill={partyInk("R")}
-        />
-        <circle
-          cx={xOf(lastPt.ts)}
-          cy={yOf(lastPt.p)}
-          r={2.4}
-          fill={partyInk("D")}
-        />
+        {/* dots: follow the cursor when hovering, otherwise mark "now" */}
+        <g pointerEvents="none">
+          {hoverPt && (
+            <line
+              x1={xOf(hoverPt.ts)}
+              x2={xOf(hoverPt.ts)}
+              y1={padT}
+              y2={padT + innerH}
+              stroke="var(--color-ink-soft)"
+              strokeWidth={0.6}
+              strokeDasharray="2 2"
+              vectorEffect="non-scaling-stroke"
+            />
+          )}
+          <circle
+            cx={xOf(displayed.ts)}
+            cy={yOf(1 - displayed.p)}
+            r={2.4}
+            fill={partyInk("R")}
+          />
+          <circle
+            cx={xOf(displayed.ts)}
+            cy={yOf(displayed.p)}
+            r={2.4}
+            fill={partyInk("D")}
+          />
+        </g>
       </svg>
     </PanelChrome>
   );
@@ -263,10 +319,12 @@ function PanelHeader({
   toggle,
   currents,
   status,
+  dateLabel,
 }: {
   toggle: React.ReactNode;
   currents?: { d: number; r: number };
   status?: string;
+  dateLabel?: string;
 }) {
   return (
     <div className="flex items-center justify-between gap-3 text-[10px] tracking-wider text-[var(--color-ink-mute)] mb-1">
@@ -275,11 +333,16 @@ function PanelHeader({
         <span className="italic truncate">{status}</span>
       )}
       {currents && (
-        <span className="font-mono tabular-nums">
+        <span className="font-mono tabular-nums flex items-baseline gap-2">
+          {dateLabel && (
+            <span className="text-[var(--color-ink-mute)] normal-case tracking-normal">
+              {dateLabel}
+            </span>
+          )}
           <span style={{ color: partyInk("D") }}>
             D {(currents.d * 100).toFixed(0)}%
           </span>
-          <span className="text-[var(--color-ink-mute)] mx-2">·</span>
+          <span className="text-[var(--color-ink-mute)]">·</span>
           <span style={{ color: partyInk("R") }}>
             R {(currents.r * 100).toFixed(0)}%
           </span>
