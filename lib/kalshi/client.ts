@@ -44,13 +44,22 @@ export async function getEvent(ticker: string): Promise<KalshiEvent | null> {
  * Pick P(Democrat wins) out of a binary D-vs-R event.
  *
  * Most House and Senate 2026 events are mutually-exclusive 2-market events
- * with sub-tickers `<event>-D` and `<event>-R`. We use the YES *mid-price*
- * of the -D market when both bid and ask are present (more stable than `last`,
- * which can be stale), and fall back to last_price_dollars otherwise.
+ * with sub-tickers `<event>-D` / `<event>-R`. A handful of older markets
+ * (e.g. KXHOUSENC11-26) use `-DEM` / `-GOP` instead — same shape, different
+ * naming convention. We catch both via the `-D[A-Z]*$` pattern, plus a
+ * `yes_sub_title` fallback for safety.
+ *
+ * We use the YES *mid-price* of the Democratic market when both bid and ask
+ * are present (more stable than `last`, which can be stale), and fall back
+ * to last_price_dollars otherwise.
  */
 export function probDemFromEvent(event: KalshiEvent | null): number | null {
   if (!event || !event.markets || event.markets.length === 0) return null;
-  const dMarket = event.markets.find((m) => /-D$/.test(m.ticker));
+  const dMarket = event.markets.find(
+    (m) =>
+      /-D[A-Z]*$/.test(m.ticker) ||
+      /democratic/i.test(m.yes_sub_title ?? ""),
+  );
   if (!dMarket) return null;
   const bid = parseFloat(dMarket.yes_bid_dollars);
   const ask = parseFloat(dMarket.yes_ask_dollars);

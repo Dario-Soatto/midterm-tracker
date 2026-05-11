@@ -81,8 +81,9 @@ export async function GET(req: NextRequest) {
 
   // Bust the page-side `unstable_cache` so visitors immediately see fresh
   // numbers; otherwise getRaces() would keep returning the stale cached
-  // snapshot for up to its `revalidate` window.
-  revalidateTag("kalshi");
+  // snapshot for up to its `revalidate` window. Next 16 added a required
+  // `profile` second arg — "max" means the longest-lived caches still flush.
+  revalidateTag("kalshi", "max");
 
   return NextResponse.json({
     ok: true,
