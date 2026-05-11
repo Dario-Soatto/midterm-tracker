@@ -10,6 +10,7 @@ import {
 } from "@/lib/colors";
 import { HOUSE_TICKERS, SENATE_TICKERS } from "@/lib/kalshi/catalog";
 import { kalshiEventUrl } from "@/lib/kalshi/url";
+import HistoryChart from "./HistoryChart";
 
 type View = "house" | "senate";
 
@@ -47,6 +48,7 @@ export default function DetailPanel({
       <div className="px-5 py-4">
         <PanelHeader title={d.name} subtitle={meta?.name ?? ""} onClose={onClose} />
         <ProbBar probDem={p} />
+        {ticker && <HistoryChart eventTicker={ticker} />}
         <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
           <div>
             <div className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]">
@@ -99,6 +101,9 @@ export default function DetailPanel({
               : undefined
           }
         />
+        {senateTicker && SENATE_2026_STATES.has(meta.abbr) && (
+          <HistoryChart eventTicker={senateTicker} />
+        )}
         <div>
           <div className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)] mb-1.5">
             house — {stateDistricts.length} district{stateDistricts.length === 1 ? "" : "s"}
