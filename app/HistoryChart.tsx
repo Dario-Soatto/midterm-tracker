@@ -12,10 +12,13 @@ type Props = {
 };
 
 /**
- * Sparkline of P(Democrat wins) over the last 30 days for one Kalshi event.
+ * Two-line price history for one Kalshi event over the last 30 days.
+ * P(D) in blue and P(R) = 1 − P(D) in red — the standard election-tracker
+ * presentation. Both lines mirror each other across the 0.5 reference;
+ * the visual shows the lead (gap between the lines) at a glance.
  *
- * Lazy-fetches `/api/history/<event>` on mount (or when the ticker changes),
- * which is itself cached server-side for 5 min via Next's fetch cache.
+ * Lazy-fetches `/api/history/<event>` on mount (or when the ticker changes);
+ * the API route caches Kalshi responses for 5 min via Next's fetch cache.
  */
 export default function HistoryChart({ eventTicker, height = 110 }: Props) {
   const [points, setPoints] = useState<Point[] | null>(null);
@@ -42,9 +45,15 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
 
   const stats = useMemo(() => {
     if (!points || points.length === 0) return null;
-    const first = points[0].p;
-    const last = points[points.length - 1].p;
-    return { first, last, delta: last - first };
+    const dFirst = points[0].p;
+    const dLast = points[points.length - 1].p;
+    return {
+      dFirst,
+      dLast,
+      rFirst: 1 - dFirst,
+      rLast: 1 - dLast,
+      delta: dLast - dFirst, // positive = D gained
+    };
   }, [points]);
 
   if (err) {
@@ -94,20 +103,18 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
   const xOf = (ts: number) => padL + ((ts - tMin) / tSpan) * innerW;
   const yOf = (p: number) => padT + (1 - p) * innerH;
 
-  // Polyline path (M then L*)
-  const path = points
-    .map((pt, i) => `${i === 0 ? "M" : "L"}${xOf(pt.ts).toFixed(1)},${yOf(pt.p).toFixed(1)}`)
-    .join(" ");
-
-  // Filled area under the curve, clipped to the inner box bottom
-  const areaPath =
-    `M${xOf(points[0].ts).toFixed(1)},${(padT + innerH).toFixed(1)} ` +
+  // Polyline paths
+  const pathFor = (probAt: (pt: Point) => number) =>
     points
-      .map((pt) => `L${xOf(pt.ts).toFixed(1)},${yOf(pt.p).toFixed(1)}`)
-      .join(" ") +
-    ` L${xOf(points[points.length - 1].ts).toFixed(1)},${(padT + innerH).toFixed(1)} Z`;
+      .map(
+        (pt, i) =>
+          `${i === 0 ? "M" : "L"}${xOf(pt.ts).toFixed(1)},${yOf(probAt(pt)).toFixed(1)}`,
+      )
+      .join(" ");
+  const pathD = pathFor((pt) => pt.p);
+  const pathR = pathFor((pt) => 1 - pt.p);
 
-  // x-axis ticks: today, -10d, -20d, -30d
+  // x-axis ticks: -30d / -20d / -10d / now
   const oneDay = 86400;
   const dayTicks: { ts: number; label: string }[] = [];
   for (let d = 30; d >= 0; d -= 10) {
@@ -116,31 +123,22 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
     dayTicks.push({ ts, label: d === 0 ? "now" : `−${d}d` });
   }
 
-  // Mid line at 0.5
   const midY = yOf(0.5);
-
-  const trendColor =
-    stats!.last >= 0.5 ? partyInk("D") : partyInk("R");
+  const lastPt = points[points.length - 1];
 
   return (
     <PanelChrome>
       <div className="flex items-baseline justify-between text-[10px] tracking-wider text-[var(--color-ink-mute)] mb-1">
-        <span>30-day P(D) history</span>
-        {stats && (
-          <span
-            style={{ color: trendColor }}
-            className="font-mono tabular-nums"
-          >
-            {(stats.first * 100).toFixed(0)}% →{" "}
-            {(stats.last * 100).toFixed(0)}%
-            {Math.abs(stats.delta) >= 0.01 && (
-              <span className="text-[var(--color-ink-mute)] ml-1">
-                ({stats.delta > 0 ? "+" : ""}
-                {(stats.delta * 100).toFixed(0)} pp)
-              </span>
-            )}
+        <span>30-day history</span>
+        <span className="font-mono tabular-nums">
+          <span style={{ color: partyInk("D") }}>
+            D {(stats!.dLast * 100).toFixed(0)}%
           </span>
-        )}
+          <span className="text-[var(--color-ink-mute)] mx-2">·</span>
+          <span style={{ color: partyInk("R") }}>
+            R {(stats!.rLast * 100).toFixed(0)}%
+          </span>
+        </span>
       </div>
       <svg
         viewBox={`0 0 ${W} ${H}`}
@@ -192,28 +190,35 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
             </text>
           </g>
         ))}
-        {/* area under the curve, low-opacity in the dem tone */}
+        {/* R line first so D draws on top when they cross — D is the headline */}
         <path
-          d={areaPath}
-          fill="var(--color-dem)"
-          fillOpacity={0.12}
-          pointerEvents="none"
-        />
-        {/* line */}
-        <path
-          d={path}
+          d={pathR}
           fill="none"
-          stroke="var(--color-dem)"
+          stroke={partyInk("R")}
           strokeWidth={1.4}
           strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
         />
-        {/* endpoint dot */}
+        <path
+          d={pathD}
+          fill="none"
+          stroke={partyInk("D")}
+          strokeWidth={1.4}
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+        {/* endpoint dots — one per line */}
         <circle
-          cx={xOf(points[points.length - 1].ts)}
-          cy={yOf(points[points.length - 1].p)}
-          r={2.5}
-          fill={trendColor}
+          cx={xOf(lastPt.ts)}
+          cy={yOf(1 - lastPt.p)}
+          r={2.4}
+          fill={partyInk("R")}
+        />
+        <circle
+          cx={xOf(lastPt.ts)}
+          cy={yOf(lastPt.p)}
+          r={2.4}
+          fill={partyInk("D")}
         />
       </svg>
     </PanelChrome>
