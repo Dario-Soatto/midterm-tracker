@@ -1,0 +1,46 @@
+name: Refresh Kalshi prices
+
+# Vercel Hobby plan rejects sub-daily crons, so we run the refresh from
+# GitHub Actions instead. It's free, runs hourly (configurable below), and
+# just hits our authenticated /api/cron/refresh-kalshi endpoint — Vercel
+# hosts the route, GitHub Actions is the scheduler.
+#
+# Setup (one-time):
+#   1. Repo → Settings → Secrets and variables → Actions → New secret
+#        Name:   CRON_SECRET
+#        Value:  same value as the CRON_SECRET in Vercel env vars
+#   2. Push this file. Workflow appears under the "Actions" tab.
+#   3. To test immediately, open the workflow there and click "Run workflow".
+
+on:
+  schedule:
+    # hourly on the hour, UTC. Use "*/5 * * * *" for every 5 min (still free).
+    - cron: "0 * * * *"
+  workflow_dispatch: {} # manual button in the Actions tab
+
+permissions: {} # this workflow doesn't need any repo permissions
+
+concurrency:
+  group: refresh-kalshi
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST to Vercel cron endpoint
+        env:
+          SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "::error::CRON_SECRET is not set in repository Actions secrets"
+            exit 1
+          fi
+          curl --fail-with-body \
+               --silent \
+               --show-error \
+               --max-time 90 \
+               -H "Authorization: Bearer $SECRET" \
+               -w "\nHTTP %{http_code} · %{time_total}s · %{size_download} bytes\n" \
+               https://midterm-tracker.vercel.app/api/cron/refresh-kalshi
