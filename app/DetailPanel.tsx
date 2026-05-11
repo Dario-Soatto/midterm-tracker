@@ -45,7 +45,7 @@ export default function DetailPanel({
     const ticker = HOUSE_TICKERS[d.geoid];
 
     return (
-      <div className="px-5 py-4">
+      <div className="px-6 py-5">
         <PanelHeader title={d.name} subtitle={meta?.name ?? ""} onClose={onClose} />
         <ProbBar probDem={p} />
         {ticker && <HistoryChart eventTicker={ticker} />}
@@ -87,13 +87,16 @@ export default function DetailPanel({
 
   const senateTicker = SENATE_TICKERS[meta.abbr];
 
+  const hasSenate = SENATE_2026_STATES.has(meta.abbr) && senateTicker;
+
   return (
-    <div className="px-5 py-4">
+    <div className="px-6 py-5">
       <PanelHeader title={meta.name} subtitle={meta.abbr} onClose={onClose} />
 
-      <div className="mt-2 space-y-5">
+      {/* Senate race section */}
+      <section className="mt-2">
         <RaceRow
-          label="senate"
+          label="senate · 2026"
           prob={senate}
           fallback={
             !SENATE_2026_STATES.has(meta.abbr)
@@ -101,23 +104,43 @@ export default function DetailPanel({
               : undefined
           }
         />
-        {senateTicker && SENATE_2026_STATES.has(meta.abbr) && (
-          <HistoryChart eventTicker={senateTicker} />
-        )}
-        <div>
-          <div className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)] mb-1.5">
-            house — {stateDistricts.length} district{stateDistricts.length === 1 ? "" : "s"}
-          </div>
-          <div className="text-xs">
-            <span style={{ color: partyInk("D") }}>{dLead} D-leading</span>
-            <span className="text-[var(--color-ink-mute)]"> · </span>
-            <span style={{ color: partyInk("R") }}>{rLead} R-leading</span>
-          </div>
+        {hasSenate && <HistoryChart eventTicker={senateTicker} />}
+      </section>
+
+      {/* House summary — boxed, more breathing room */}
+      <section className="mt-6 border-t border-[var(--color-rule)] pt-4">
+        <div className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)] mb-2">
+          house · {stateDistricts.length} district
+          {stateDistricts.length === 1 ? "" : "s"}
         </div>
-      </div>
-      {senateTicker && SENATE_2026_STATES.has(meta.abbr) && (
-        <KalshiLink ticker={senateTicker} />
-      )}
+        <div className="flex items-baseline gap-4 text-sm">
+          <span className="flex items-baseline gap-1.5">
+            <span
+              className="font-serif text-xl tabular-nums"
+              style={{ color: partyInk("D") }}
+            >
+              {dLead}
+            </span>
+            <span className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]">
+              D-leading
+            </span>
+          </span>
+          <span className="text-[var(--color-ink-mute)]">/</span>
+          <span className="flex items-baseline gap-1.5">
+            <span
+              className="font-serif text-xl tabular-nums"
+              style={{ color: partyInk("R") }}
+            >
+              {rLead}
+            </span>
+            <span className="text-[10px] tracking-widest uppercase text-[var(--color-ink-mute)]">
+              R-leading
+            </span>
+          </span>
+        </div>
+      </section>
+
+      {hasSenate && <KalshiLink ticker={senateTicker} />}
     </div>
   );
 }

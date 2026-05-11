@@ -597,7 +597,7 @@ function FloatingPopup({
       role="dialog"
       aria-label="race detail"
       style={style}
-      className={`absolute z-30 w-[340px] max-w-[calc(100vw-2rem)] -translate-x-1/2 ${
+      className={`absolute z-30 w-[420px] max-w-[calc(100vw-2rem)] -translate-x-1/2 ${
         flipBelow
           ? "translate-y-[14px]"
           : "-translate-y-[calc(100%+14px)]"
