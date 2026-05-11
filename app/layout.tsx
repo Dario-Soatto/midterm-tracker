@@ -16,10 +16,28 @@ const serif = Newsreader({
   style: ["normal", "italic"],
 });
 
+const SITE_URL = "https://midterm-tracker.vercel.app";
+const SITE_TITLE = "Midterms 2026 — live prediction-market odds";
+const SITE_DESCRIPTION =
+  "Live prediction-market odds for the 2026 U.S. midterms. Every House district and Senate race priced from Kalshi, aggregated into a seat-distribution forecast.";
+
 export const metadata: Metadata = {
-  title: "Midterms 2026",
-  description:
-    "Live prediction-market odds for the 2026 U.S. midterm elections. Senate, House, and Governor races priced from Kalshi, aggregated into seat-distribution forecasts.",
+  metadataBase: new URL(SITE_URL),
+  title: SITE_TITLE,
+  description: SITE_DESCRIPTION,
+  openGraph: {
+    type: "website",
+    siteName: "Midterms 2026",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+    url: SITE_URL,
+    // app/opengraph-image.tsx is auto-resolved into the og:image tag.
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: SITE_TITLE,
+    description: SITE_DESCRIPTION,
+  },
 };
 
 export default function RootLayout({
