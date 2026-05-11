@@ -111,30 +111,8 @@ export default function OutcomePanel({
       </div>
 
       <div className="border border-[var(--color-rule)] bg-[var(--color-paper-warm)] px-6 py-5">
-        {/* Probability of each party winning a strict majority */}
-        <div className="flex items-baseline gap-4 mb-3 text-[10px] tracking-widest uppercase">
-          <span className="text-[var(--color-ink-mute)]">
-            chance of majority
-          </span>
-          <span style={{ color: partyInk("D") }} className="font-mono tabular-nums">
-            D {(pDmaj * 100).toFixed(pDmaj >= 0.995 || pDmaj <= 0.005 ? 1 : 0)}%
-          </span>
-          <span className="text-[var(--color-ink-mute)]">·</span>
-          <span style={{ color: partyInk("R") }} className="font-mono tabular-nums">
-            R {(pRmaj * 100).toFixed(pRmaj >= 0.995 || pRmaj <= 0.005 ? 1 : 0)}%
-          </span>
-          {pTie > 0.005 && (
-            <>
-              <span className="text-[var(--color-ink-mute)]">·</span>
-              <span className="text-[var(--color-ink-soft)] font-mono tabular-nums">
-                tie {(pTie * 100).toFixed(1)}%
-              </span>
-            </>
-          )}
-        </div>
-
-        <div className="flex items-baseline gap-6 mb-5 flex-wrap">
-          <div className="flex items-baseline gap-2">
+        <div className="flex items-start gap-6 mb-5 flex-wrap">
+          <div className="flex items-baseline gap-2 flex-wrap">
             <span
               className="font-serif text-3xl"
               style={{ color: "var(--color-dem)" }}
@@ -165,10 +143,47 @@ export default function OutcomePanel({
             </span>
           </div>
 
-          <div className="text-[10px] tracking-wider text-[var(--color-ink-mute)] ml-auto">
-            ±{data.summary.std.toFixed(1)} σ · 90% CI{" "}
-            {(data.summary.quantile(0.05) + data.baseDOffset).toFixed(0)}–
-            {(data.summary.quantile(0.95) + data.baseDOffset).toFixed(0)} D
+          <div className="ml-auto text-right flex flex-col gap-1.5">
+            {/* P(strict majority) per party */}
+            <div className="flex items-baseline justify-end gap-2 text-[10px] tracking-widest uppercase">
+              <span className="text-[var(--color-ink-mute)]">
+                chance of majority
+              </span>
+              <span
+                style={{ color: partyInk("D") }}
+                className="font-mono tabular-nums"
+              >
+                D{" "}
+                {(pDmaj * 100).toFixed(
+                  pDmaj >= 0.995 || pDmaj <= 0.005 ? 1 : 0,
+                )}
+                %
+              </span>
+              <span className="text-[var(--color-ink-mute)]">·</span>
+              <span
+                style={{ color: partyInk("R") }}
+                className="font-mono tabular-nums"
+              >
+                R{" "}
+                {(pRmaj * 100).toFixed(
+                  pRmaj >= 0.995 || pRmaj <= 0.005 ? 1 : 0,
+                )}
+                %
+              </span>
+              {pTie > 0.005 && (
+                <>
+                  <span className="text-[var(--color-ink-mute)]">·</span>
+                  <span className="text-[var(--color-ink-soft)] font-mono tabular-nums">
+                    tie {(pTie * 100).toFixed(1)}%
+                  </span>
+                </>
+              )}
+            </div>
+            <div className="text-[10px] tracking-wider text-[var(--color-ink-mute)]">
+              ±{data.summary.std.toFixed(1)} σ · 90% CI{" "}
+              {(data.summary.quantile(0.05) + data.baseDOffset).toFixed(0)}–
+              {(data.summary.quantile(0.95) + data.baseDOffset).toFixed(0)} D
+            </div>
           </div>
         </div>
 
@@ -418,15 +433,17 @@ function Density({
               fill={isD ? "var(--color-dem)" : "var(--color-rep)"}
               opacity={0.85}
             />
-            {/* full-column hover hit area (transparent, just to widen the
-                hover target so the native <title> tooltip surfaces even on
-                low-probability bars) */}
+            {/* full-column hover hit area. SVG ignores pointer events on
+                transparent paint by default (visiblePainted), so we have to
+                explicitly opt in with pointerEvents="all" for the <title>
+                tooltip to surface. */}
             <rect
               x={x - barW / 2}
               y={padTop}
               width={barW}
               height={innerH}
               fill="transparent"
+              pointerEvents="all"
             >
               <title>{tooltip}</title>
             </rect>
