@@ -91,7 +91,8 @@ const houseTickers = buildHouse();
 
 const SENATE_OVERRIDES = {
   KY: "SENATELA-26",      // Kalshi typo: ticker says LA but it's the Kentucky race
-  LA: "KXSENATELA-26",    // Louisiana event exists; markets not yet listed
+  LA: "KXSENATELA-26NOV", // Louisiana uses the -26NOV suffix (a sibling
+                          // event ticker KXSENATELA-26 exists but is empty)
   FL: "SENATEFLS-26",     // Florida special election
   OH: "SENATEOHS-26",     // Ohio special election
 };

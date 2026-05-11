@@ -3,7 +3,7 @@
 //   1. node scripts/discover-kalshi.mjs
 //   2. node scripts/build-catalog.mjs
 //
-// Generated: 2026-05-09T19:15:12.872Z
+// Generated: 2026-05-11T05:34:53.895Z
 // Coverage:  House 435/435 · Senate 35/35
 
 /** GEOID (state-fips + 2-digit-cd) → Kalshi event ticker. */
@@ -459,7 +459,7 @@ export const SENATE_TICKERS: Record<string, string> = {
   "IL": "SENATEIL-26",
   "KS": "SENATEKS-26",
   "KY": "SENATELA-26",
-  "LA": "KXSENATELA-26",
+  "LA": "KXSENATELA-26NOV",
   "MA": "SENATEMA-26",
   "ME": "SENATEME-26",
   "MI": "SENATEMI-26",
@@ -490,7 +490,7 @@ export const SENATE_TICKERS: Record<string, string> = {
  * pre-resolve the full URL at catalog build time. Tickers without an entry
  * here aren't indexed by Kalshi yet (or we have a stale sitemap).
  *
- * Sitemap matched 111 / 470 of our tickers.
+ * Sitemap matched 112 / 470 of our tickers.
  */
 export const KALSHI_URLS: Record<string, string> = {
   "HOUSEAKAL-26": "https://kalshi.com/markets/houseakal/house-alaska-atlarge/houseakal-26",
@@ -570,6 +570,7 @@ export const KALSHI_URLS: Record<string, string> = {
   "KXHOUSEUT03-26": "https://kalshi.com/markets/kxhouseut03/who-will-win-ut03/kxhouseut03-26",
   "KXHOUSEVA10-26": "https://kalshi.com/markets/kxhouseva10/house-virginias-10th/kxhouseva10-26",
   "KXHOUSEWA8-26": "https://kalshi.com/markets/kxhousewa8/house-washingtons-8th/kxhousewa8-26",
+  "KXSENATELA-26NOV": "https://kalshi.com/markets/kxsenatela/who-will-win-the-senate-race-in-louisiana/kxsenatela-26nov",
   "SENATEAK-26": "https://kalshi.com/markets/senateak/alaska-senate-race/senateak-26",
   "SENATEAL-26": "https://kalshi.com/markets/senateal/alabama/senateal-26",
   "SENATEAR-26": "https://kalshi.com/markets/senatear/arkansas-senate-race/senatear-26",
