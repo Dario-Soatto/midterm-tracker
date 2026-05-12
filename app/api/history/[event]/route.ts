@@ -7,6 +7,11 @@ const DEFAULT_DAYS = 30;
 
 /** Candle resolution in minutes (60 = hourly). */
 const PERIOD_MIN = 60;
+/** Fallback granularity when Kalshi has no hourly candles for the market. */
+const PERIOD_MIN_DAILY = 1440;
+/** When even the daily fetch comes back empty within the requested window,
+ *  widen the lookback this far so we can carry-forward from older history. */
+const WIDE_LOOKBACK_DAYS = 365;
 
 /**
  * Strip the trailing `-YY[suffix]` (e.g. `-26`, `-26NOV`) off an event ticker
@@ -46,15 +51,20 @@ export async function GET(
   // the cron uses via `probDemFromEvent`.
   const dMarketCandidates = [`${eventTicker}-D`, `${eventTicker}-DEM`];
 
+  const fetchCandles = (market: string, startTs: number, endTs: number, period: number) =>
+    kalshiFetchRetrying<{ candlesticks: Candle[] }>(
+      `/trade-api/v2/series/${encodeURIComponent(series)}/markets/${encodeURIComponent(market)}/candlesticks?start_ts=${startTs}&end_ts=${endTs}&period_interval=${period}`,
+    );
+
   try {
     let data: { candlesticks: Candle[] } | null = null;
     let dMarket: string | null = null;
     let lastErr: Error | null = null;
+    // First resolve which sub-ticker (`-D` vs `-DEM`) actually exists for
+    // this event, using hourly candles for the requested window.
     for (const candidate of dMarketCandidates) {
       try {
-        data = await kalshiFetchRetrying<{ candlesticks: Candle[] }>(
-          `/trade-api/v2/series/${encodeURIComponent(series)}/markets/${encodeURIComponent(candidate)}/candlesticks?start_ts=${start}&end_ts=${end}&period_interval=${PERIOD_MIN}`,
-        );
+        data = await fetchCandles(candidate, start, end, PERIOD_MIN);
         dMarket = candidate;
         break;
       } catch (e) {
@@ -66,6 +76,34 @@ export async function GET(
     }
     if (!data || !dMarket) {
       throw lastErr ?? new Error(`No D-side sub-market found for ${eventTicker}`);
+    }
+
+    // Low-volume markets (e.g. KXHOUSERACE-TX02-26) don't get any hourly
+    // candles emitted by Kalshi at all — only daily ones. Hourly returns
+    // an empty array; we then retry at daily granularity inside the
+    // requested window, then widen the lookback up to a year if the
+    // requested window has no daily candles either. The carry-forward
+    // pass downstream fills in the visual line.
+    if (data.candlesticks.length === 0) {
+      try {
+        const daily = await fetchCandles(dMarket, start, end, PERIOD_MIN_DAILY);
+        if (daily.candlesticks.length > 0) data = daily;
+      } catch {
+        /* keep empty data; try wide lookback below */
+      }
+    }
+    if (data.candlesticks.length === 0) {
+      try {
+        const wide = await fetchCandles(
+          dMarket,
+          end - WIDE_LOOKBACK_DAYS * 86400,
+          end,
+          PERIOD_MIN_DAILY,
+        );
+        if (wide.candlesticks.length > 0) data = wide;
+      } catch {
+        /* leave data empty; respond with points: [] */
+      }
     }
 
     const raw = data.candlesticks
@@ -109,18 +147,32 @@ export async function GET(
     const STEP_SEC = PERIOD_MIN * 60;
     const points: { ts: number; p: number }[] = [];
     if (raw.length > 0) {
+      // Clamp the grid to the requested window. raw[0].ts may sit before
+      // `start` when we widened the lookback; in that case we still seed
+      // lastP from the latest candle at-or-before `start` so the line
+      // begins at the correct value.
+      const gridStart = Math.max(raw[0].ts, start);
       let idx = 0;
       let lastP = raw[0].p;
-      for (let ts = raw[0].ts; ts <= end; ts += STEP_SEC) {
+      while (idx + 1 < raw.length && raw[idx + 1].ts <= gridStart) {
+        idx++;
+        lastP = raw[idx].p;
+      }
+      for (let ts = gridStart; ts <= end; ts += STEP_SEC) {
         while (idx + 1 < raw.length && raw[idx + 1].ts <= ts) {
           idx++;
           lastP = raw[idx].p;
         }
         points.push({ ts, p: lastP });
       }
-      // Pin the most recent real candle in case it lands between grid steps.
+      // Pin the most recent real candle (only if it lands in-window) in
+      // case it falls between grid steps.
       const lastReal = raw[raw.length - 1];
-      if (points.length === 0 || points[points.length - 1].ts < lastReal.ts) {
+      if (
+        lastReal.ts >= gridStart &&
+        lastReal.ts <= end &&
+        (points.length === 0 || points[points.length - 1].ts < lastReal.ts)
+      ) {
         points.push(lastReal);
       }
     }
