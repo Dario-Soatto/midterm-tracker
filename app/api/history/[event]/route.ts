@@ -48,7 +48,7 @@ export async function GET(
       `/trade-api/v2/series/${encodeURIComponent(series)}/markets/${encodeURIComponent(dMarket)}/candlesticks?start_ts=${start}&end_ts=${end}&period_interval=${PERIOD_MIN}`,
     );
 
-    const points = data.candlesticks
+    const raw = data.candlesticks
       .map((c) => {
         // Prefer YES bid/ask mid; fall back to the last-trade price if the
         // book was one-sided in that candle.
@@ -63,7 +63,34 @@ export async function GET(
         }
         return p === null ? null : { ts: c.end_period_ts, p };
       })
-      .filter((pt): pt is { ts: number; p: number } => pt !== null);
+      .filter((pt): pt is { ts: number; p: number } => pt !== null)
+      .sort((a, b) => a.ts - b.ts);
+
+    // Kalshi only emits a candle when the market actually moves (volume, bid,
+    // or ask changes). For low-volume races (e.g. HOUSEAZ2-26) that yields
+    // 3-ish candles over 7 days even though the standing bid/ask is well-
+    // defined the whole time — the chart then reads as broken. Resample
+    // onto a regular hourly grid via carry-forward so the line stays
+    // continuous all the way to `end`. Kalshi.com's own chart does the
+    // same thing.
+    const STEP_SEC = PERIOD_MIN * 60;
+    const points: { ts: number; p: number }[] = [];
+    if (raw.length > 0) {
+      let idx = 0;
+      let lastP = raw[0].p;
+      for (let ts = raw[0].ts; ts <= end; ts += STEP_SEC) {
+        while (idx + 1 < raw.length && raw[idx + 1].ts <= ts) {
+          idx++;
+          lastP = raw[idx].p;
+        }
+        points.push({ ts, p: lastP });
+      }
+      // Pin the most recent real candle in case it lands between grid steps.
+      const lastReal = raw[raw.length - 1];
+      if (points.length === 0 || points[points.length - 1].ts < lastReal.ts) {
+        points.push(lastReal);
+      }
+    }
 
     return NextResponse.json({
       eventTicker,
