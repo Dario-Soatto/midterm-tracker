@@ -238,30 +238,38 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
           strokeWidth={0.5}
           strokeDasharray="3 3"
         />
-        {/* x-axis day-ticks */}
-        {dayTicks.map((t) => (
-          <g key={t.label}>
-            <line
-              x1={xOf(t.ts)}
-              x2={xOf(t.ts)}
-              y1={padT + innerH}
-              y2={padT + innerH + 3}
-              stroke="var(--color-ink-mute)"
-              strokeWidth={0.4}
-            />
-            <text
-              x={xOf(t.ts)}
-              y={H - 2}
-              textAnchor="middle"
-              fontSize={8}
-              fontFamily="var(--font-mono)"
-              fill="var(--color-ink-mute)"
-              style={{ letterSpacing: 0.5 }}
-            >
-              {t.label}
-            </text>
-          </g>
-        ))}
+        {/* x-axis day-ticks. The rightmost tick sits flush against the
+            chart's right edge, so a centered label would clip past the
+            viewBox; anchor it to "end" instead. Mirror behavior for the
+            leftmost so it can't collide with the y-axis labels. */}
+        {dayTicks.map((t, i) => {
+          const isFirst = i === 0;
+          const isLast = i === dayTicks.length - 1;
+          const anchor = isLast ? "end" : isFirst ? "start" : "middle";
+          return (
+            <g key={t.label}>
+              <line
+                x1={xOf(t.ts)}
+                x2={xOf(t.ts)}
+                y1={padT + innerH}
+                y2={padT + innerH + 3}
+                stroke="var(--color-ink-mute)"
+                strokeWidth={0.4}
+              />
+              <text
+                x={xOf(t.ts)}
+                y={H - 2}
+                textAnchor={anchor}
+                fontSize={8}
+                fontFamily="var(--font-mono)"
+                fill="var(--color-ink-mute)"
+                style={{ letterSpacing: 0.5 }}
+              >
+                {t.label}
+              </text>
+            </g>
+          );
+        })}
         {/* R line first so D draws on top when they cross — D is the headline */}
         <path
           d={pathR}
