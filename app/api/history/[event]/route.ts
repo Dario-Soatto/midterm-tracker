@@ -20,7 +20,7 @@ function seriesFromEvent(eventTicker: string): string {
 
 type Candle = {
   end_period_ts: number;
-  price?: { previous_dollars?: string };
+  price?: { close_dollars?: string; previous_dollars?: string };
   yes_bid?: { close_dollars?: string };
   yes_ask?: { close_dollars?: string };
 };
@@ -50,16 +50,29 @@ export async function GET(
 
     const raw = data.candlesticks
       .map((c) => {
-        // Prefer YES bid/ask mid; fall back to the last-trade price if the
-        // book was one-sided in that candle.
+        // Match what Kalshi.com itself plots: the most recent YES *trade*
+        // price as of the candle's end. `close_dollars` is set when the
+        // candle had volume; `previous_dollars` carries forward the last
+        // trade from earlier periods. Only fall back to the bid/ask
+        // midpoint if the market has never traded — otherwise the spread
+        // mid drifts independently of the trade price and the chart
+        // disagrees visibly with Kalshi's.
+        const close = parseFloat(c.price?.close_dollars ?? "");
+        const prev = parseFloat(c.price?.previous_dollars ?? "");
         const bid = parseFloat(c.yes_bid?.close_dollars ?? "");
         const ask = parseFloat(c.yes_ask?.close_dollars ?? "");
-        const prev = parseFloat(c.price?.previous_dollars ?? "");
         let p: number | null = null;
-        if (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) {
-          p = (bid + ask) / 2;
+        if (Number.isFinite(close) && close > 0) {
+          p = close;
         } else if (Number.isFinite(prev) && prev > 0) {
           p = prev;
+        } else if (
+          Number.isFinite(bid) &&
+          Number.isFinite(ask) &&
+          bid > 0 &&
+          ask > 0
+        ) {
+          p = (bid + ask) / 2;
         }
         return p === null ? null : { ts: c.end_period_ts, p };
       })
