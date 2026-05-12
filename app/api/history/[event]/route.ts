@@ -31,9 +31,6 @@ export async function GET(
 ) {
   const { event } = await context.params;
   const eventTicker = decodeURIComponent(event);
-  // Every binary event in our catalog has a `<event>-D` sub-market; that's
-  // the one that quotes P(Democrat wins).
-  const dMarket = `${eventTicker}-D`;
   const series = seriesFromEvent(eventTicker);
 
   const url = new URL(req.url);
@@ -43,10 +40,33 @@ export async function GET(
   const end = Math.floor(Date.now() / 1000);
   const start = end - days * 86400;
 
+  // Most binary events use a `-D` sub-market for "Democrat wins", but a
+  // handful (e.g. KXHOUSENC11-26) use the longer `-DEM` / `-GOP` naming.
+  // Try the common convention first and fall back on 404 — same pattern
+  // the cron uses via `probDemFromEvent`.
+  const dMarketCandidates = [`${eventTicker}-D`, `${eventTicker}-DEM`];
+
   try {
-    const data = await kalshiFetchRetrying<{ candlesticks: Candle[] }>(
-      `/trade-api/v2/series/${encodeURIComponent(series)}/markets/${encodeURIComponent(dMarket)}/candlesticks?start_ts=${start}&end_ts=${end}&period_interval=${PERIOD_MIN}`,
-    );
+    let data: { candlesticks: Candle[] } | null = null;
+    let dMarket: string | null = null;
+    let lastErr: Error | null = null;
+    for (const candidate of dMarketCandidates) {
+      try {
+        data = await kalshiFetchRetrying<{ candlesticks: Candle[] }>(
+          `/trade-api/v2/series/${encodeURIComponent(series)}/markets/${encodeURIComponent(candidate)}/candlesticks?start_ts=${start}&end_ts=${end}&period_interval=${PERIOD_MIN}`,
+        );
+        dMarket = candidate;
+        break;
+      } catch (e) {
+        const status = (e as Error & { status?: number }).status;
+        lastErr = e as Error;
+        if (status !== 404) throw e;
+        // 404 → try the next sub-ticker shape
+      }
+    }
+    if (!data || !dMarket) {
+      throw lastErr ?? new Error(`No D-side sub-market found for ${eventTicker}`);
+    }
 
     const raw = data.candlesticks
       .map((c) => {
