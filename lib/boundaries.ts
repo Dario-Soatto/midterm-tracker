@@ -1,12 +1,18 @@
 "use client";
 
-import { feature, mesh } from "topojson-client";
+import { feature, merge, mesh } from "topojson-client";
 import { geoAlbersUsa, geoPath } from "d3-geo";
 import type {
   Topology,
   GeometryCollection,
+  Polygon as TopoPolygon,
+  MultiPolygon as TopoMultiPolygon,
 } from "topojson-specification";
-import type { Feature, FeatureCollection } from "geojson";
+import type {
+  Feature,
+  FeatureCollection,
+  MultiPolygon,
+} from "geojson";
 
 export type DistrictFeature = {
   geoid: string;
@@ -66,15 +72,73 @@ export function projectBoundaries(topo: Topology): Boundaries {
     t,
     t.objects.districts,
   ) as FeatureCollection<GeoJSON.Geometry, DistrictProps>;
-  const statesFc = feature(
+
+  // The bundled `states` layer was simplified independently from
+  // `districts`, so its arcs drift a pixel or two off the district arcs
+  // and the state-border overlay reads as misaligned in the House view.
+  // We use this layer only to pick up state metadata (abbr/name keyed by
+  // STATEFP); the actual geometry we draw is derived from district arcs
+  // via merge/mesh, which guarantees the borders snap together exactly.
+  const statesMeta = feature(
     t,
     t.objects.states,
   ) as FeatureCollection<GeoJSON.Geometry, StateProps>;
-  const stateMeshGeo = mesh(t, t.objects.states, (a, b) => a !== b);
+  const stateMetaByFips = new Map<string, { abbr: string; name: string }>();
+  for (const f of statesMeta.features) {
+    stateMetaByFips.set(f.properties.STATEFP, {
+      abbr: f.properties.STUSPS,
+      name: f.properties.NAME,
+    });
+  }
 
-  // Auto-fit the projection so every state (including AK + HI insets) lives
-  // inside [PAD, VIEW_W - PAD] × [PAD, VIEW_H - PAD] — eliminates the
-  // edge-clipping you'd get from a hardcoded scale/translate.
+  // Build state polygons by merging the district topology objects belonging
+  // to each STATEFP. Same arcs as the districts → pixel-identical edges.
+  type DistrictGeom = TopoPolygon<DistrictProps> | TopoMultiPolygon<DistrictProps>;
+  const districtGeoms = (
+    t.objects.districts as GeometryCollection<DistrictProps>
+  ).geometries as DistrictGeom[];
+  const districtsByState = new Map<string, DistrictGeom[]>();
+  for (const g of districtGeoms) {
+    const fips = g.properties!.STATEFP;
+    const bucket = districtsByState.get(fips);
+    if (bucket) bucket.push(g);
+    else districtsByState.set(fips, [g]);
+  }
+  const stateFeatures: Feature<MultiPolygon, StateProps>[] = Array.from(
+    districtsByState,
+    ([fips, geoms]) => {
+      const meta = stateMetaByFips.get(fips);
+      return {
+        type: "Feature",
+        properties: {
+          STATEFP: fips,
+          STUSPS: meta?.abbr ?? "",
+          NAME: meta?.name ?? "",
+        },
+        geometry: merge(t, geoms) as MultiPolygon,
+      };
+    },
+  );
+  const statesFc: FeatureCollection<MultiPolygon, StateProps> = {
+    type: "FeatureCollection",
+    features: stateFeatures,
+  };
+
+  // The state-mesh overlay (drawn dark for state borders in the House view)
+  // is the subset of district arcs whose two neighbors are in different
+  // states — plus the outer boundary, which is included when `b` is null.
+  const stateMeshGeo = mesh(
+    t,
+    t.objects.districts,
+    (a, b) => {
+      const sa = (a as DistrictGeom).properties?.STATEFP;
+      const sb = b ? (b as DistrictGeom).properties?.STATEFP : undefined;
+      return !b || sa !== sb;
+    },
+  );
+
+  // Auto-fit projection against the merged state polygons (same extent as
+  // before, but now exactly matches what we draw).
   const projection = geoAlbersUsa();
   projection.fitExtent(
     [
@@ -96,15 +160,13 @@ export function projectBoundaries(topo: Topology): Boundaries {
     }),
   );
 
-  const states: StateFeature[] = statesFc.features.map(
-    (f: Feature<GeoJSON.Geometry, StateProps>) => ({
-      fips: f.properties.STATEFP,
-      abbr: f.properties.STUSPS,
-      name: f.properties.NAME,
-      path: compact(pathFn(f) ?? ""),
-      centroid: pathFn.centroid(f) as [number, number],
-    }),
-  );
+  const states: StateFeature[] = stateFeatures.map((f) => ({
+    fips: f.properties.STATEFP,
+    abbr: f.properties.STUSPS,
+    name: f.properties.NAME,
+    path: compact(pathFn(f) ?? ""),
+    centroid: pathFn.centroid(f) as [number, number],
+  }));
 
   return {
     width: VIEW_W,
