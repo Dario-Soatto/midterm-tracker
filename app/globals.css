@@ -11,6 +11,7 @@
   --color-rep: #a0392c;
   --color-ind: #6e6a5e;
   --color-tossup: #b08930;
+  --color-tie: #5d3d6e;
   color-scheme: light;
 }
 
@@ -25,6 +26,7 @@
   --color-rep: var(--color-rep);
   --color-ind: var(--color-ind);
   --color-tossup: var(--color-tossup);
+  --color-tie: var(--color-tie);
   --font-mono: var(--font-jetbrains-mono);
   --font-serif: var(--font-newsreader);
 }

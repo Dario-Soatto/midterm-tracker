@@ -429,7 +429,11 @@ function Density({
           ? `${(hoverPt.p * 100).toFixed(hoverPt.p * 100 < 10 ? 1 : 0)}% chance`
           : "<0.1% chance"
       } · ${
-        hoverPt.seatCount >= majorityAt ? "D majority" : "R majority"
+        hoverPt.seatCount * 2 === total
+          ? "tied"
+          : hoverPt.seatCount * 2 > total
+            ? "D majority"
+            : "R majority"
       }`
     : null;
 
@@ -459,7 +463,15 @@ function Density({
         const x = xFor(k);
         if (x < -barW || x > W + barW) return null;
         const seatCount = k + baseDOffset;
-        const isD = seatCount >= majorityAt;
+        // Color by strict majority: a perfect split (only possible when total
+        // is even, i.e. the Senate's 50/50) is neither party — paint it tie.
+        const isTie = seatCount * 2 === total;
+        const isD = seatCount * 2 > total;
+        const fill = isTie
+          ? "var(--color-tie)"
+          : isD
+            ? "var(--color-dem)"
+            : "var(--color-rep)";
         const h = (p / maxP) * innerH;
         const isHover = hoverK === k;
         return (
@@ -469,7 +481,7 @@ function Density({
               y={H - padBottom - h}
               width={barW}
               height={h}
-              fill={isD ? "var(--color-dem)" : "var(--color-rep)"}
+              fill={fill}
               opacity={isHover ? 1 : 0.85}
             />
             {/* full-column hover hit area. SVG ignores pointer events on
