@@ -49,9 +49,17 @@ export async function getEvent(ticker: string): Promise<KalshiEvent | null> {
  * naming convention. We catch both via the `-D[A-Z]*$` pattern, plus a
  * `yes_sub_title` fallback for safety.
  *
- * We use the YES *mid-price* of the Democratic market when both bid and ask
- * are present (more stable than `last`, which can be stale), and fall back
- * to last_price_dollars otherwise.
+ * Signal preference:
+ *   1. last trade — the real market-clearing price. For low-volume safe
+ *      seats (Chicago, deep-rural districts) the standing book is often
+ *      bid=0.002 / ask=0.99 with last=0.97. The midpoint of that book is
+ *      a meaningless 0.50; the last trade is the only honest signal.
+ *   2. mid of a narrow standing book — only when there's been no trade
+ *      AND bid/ask are close enough that the average is informative.
+ *   3. single-sided fallback — bid if the ask is essentially "no one's
+ *      selling" (≥0.99), ask if the bid is essentially "no one's buying"
+ *      (≤0.01). Better than averaging two uncommitted orders.
+ *   4. wide-spread mid — last resort.
  */
 export function probDemFromEvent(event: KalshiEvent | null): number | null {
   if (!event || !event.markets || event.markets.length === 0) return null;
@@ -64,11 +72,22 @@ export function probDemFromEvent(event: KalshiEvent | null): number | null {
   const bid = parseFloat(dMarket.yes_bid_dollars);
   const ask = parseFloat(dMarket.yes_ask_dollars);
   const last = parseFloat(dMarket.last_price_dollars);
-  if (Number.isFinite(bid) && Number.isFinite(ask) && bid > 0 && ask > 0) {
+
+  if (Number.isFinite(last) && last > 0) return clamp(last);
+
+  const haveBid = Number.isFinite(bid) && bid > 0;
+  const haveAsk = Number.isFinite(ask) && ask > 0;
+  if (!haveBid && !haveAsk) return null;
+
+  const NARROW_SPREAD = 0.2;
+  if (haveBid && haveAsk && ask - bid <= NARROW_SPREAD) {
     return clamp((bid + ask) / 2);
   }
-  if (Number.isFinite(last) && last > 0) return clamp(last);
-  return null;
+  // Wide spread, no trade — pick the side traders have actually committed to.
+  if (haveBid && haveAsk && bid > 0.01 && ask >= 0.99) return clamp(bid);
+  if (haveBid && haveAsk && ask < 0.99 && bid <= 0.01) return clamp(ask);
+  if (haveBid && haveAsk) return clamp((bid + ask) / 2);
+  return clamp(haveBid ? bid : ask);
 }
 
 const clamp = (x: number) => Math.max(0.001, Math.min(0.999, x));
