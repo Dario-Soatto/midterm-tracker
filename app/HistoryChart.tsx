@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { partyInk } from "@/lib/colors";
 
-type Point = { ts: number; p: number };
+type Point = { ts: number; pD: number; pR: number };
 
 type Props = {
   eventTicker: string;
@@ -28,9 +28,11 @@ const fmtHoverDate = (ts: number) => {
 
 /**
  * Two-line price history for one Kalshi event over the last 30 days.
- * P(D) in blue and P(R) = 1 − P(D) in red — the standard election-tracker
- * presentation. Both lines mirror each other across the 0.5 reference;
- * the visual shows the lead (gap between the lines) at a glance.
+ * P(D) in blue and P(R) in red, plotted from each side's own market
+ * candlesticks — so when there's an independent on the ballot (e.g.
+ * Nebraska's Osborn) the two lines don't sum to 100% and the residual
+ * is the indie's share. The lines no longer mirror across 0.5; the gap
+ * between them shows the actual lead.
  *
  * Lazy-fetches `/api/history/<event>` on mount (or when the ticker changes);
  * the API route caches Kalshi responses for 5 min via Next's fetch cache.
@@ -54,8 +56,27 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
       .then((r) => r.json())
       .then((data) => {
         if (cancelled) return;
-        if (data.error) setErr(String(data.error));
-        else setPoints(data.points ?? []);
+        if (data.error) {
+          setErr(String(data.error));
+          return;
+        }
+        // Tolerate the old API shape (`p` instead of `pD`/`pR`) so the
+        // chart doesn't blank out if a client picks up the new bundle
+        // before the new server route has deployed.
+        const raw: Array<{
+          ts: number;
+          pD?: number;
+          pR?: number;
+          p?: number;
+        }> = data.points ?? [];
+        const normalized: Point[] = raw.map((pt) => {
+          if (pt.pD !== undefined && pt.pR !== undefined) {
+            return { ts: pt.ts, pD: pt.pD, pR: pt.pR };
+          }
+          const pD = pt.p ?? 0;
+          return { ts: pt.ts, pD, pR: Math.max(0, 1 - pD) };
+        });
+        setPoints(normalized);
       })
       .catch((e) => {
         if (!cancelled) setErr((e as Error).message);
@@ -67,14 +88,14 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
 
   const stats = useMemo(() => {
     if (!points || points.length === 0) return null;
-    const dFirst = points[0].p;
-    const dLast = points[points.length - 1].p;
+    const first = points[0];
+    const last = points[points.length - 1];
     return {
-      dFirst,
-      dLast,
-      rFirst: 1 - dFirst,
-      rLast: 1 - dLast,
-      delta: dLast - dFirst, // positive = D gained
+      dFirst: first.pD,
+      rFirst: first.pR,
+      dLast: last.pD,
+      rLast: last.pR,
+      delta: last.pD - first.pD, // positive = D gained
     };
   }, [points]);
 
@@ -137,8 +158,8 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
           `${i === 0 ? "M" : "L"}${xOf(pt.ts).toFixed(1)},${yOf(probAt(pt)).toFixed(1)}`,
       )
       .join(" ");
-  const pathD = pathFor((pt) => pt.p);
-  const pathR = pathFor((pt) => 1 - pt.p);
+  const pathD = pathFor((pt) => pt.pD);
+  const pathR = pathFor((pt) => pt.pR);
 
   // x-axis ticks: 4 evenly-spaced dated labels covering the requested window
   const oneDay = 86400;
@@ -182,7 +203,7 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
     <PanelChrome>
       <PanelHeader
         toggle={toggle}
-        currents={{ d: displayed.p, r: 1 - displayed.p }}
+        currents={{ d: displayed.pD, r: displayed.pR }}
         dateLabel={hoverPt ? fmtHoverDate(hoverPt.ts) : undefined}
       />
 
@@ -303,13 +324,13 @@ export default function HistoryChart({ eventTicker, height = 110 }: Props) {
           )}
           <circle
             cx={xOf(displayed.ts)}
-            cy={yOf(1 - displayed.p)}
+            cy={yOf(displayed.pR)}
             r={2.4}
             fill={partyInk("R")}
           />
           <circle
             cx={xOf(displayed.ts)}
-            cy={yOf(displayed.p)}
+            cy={yOf(displayed.pD)}
             r={2.4}
             fill={partyInk("D")}
           />
