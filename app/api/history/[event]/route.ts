@@ -214,17 +214,27 @@ function buildGrid(raw: RawPoint[], start: number, end: number): RawPoint[] {
  * step but may have started at different points (each side seeds from
  * its own raw[0].ts), the intersection drops the leading values where
  * only one side has data — keeps the two lines synchronized.
+ *
+ * We also echo `p` (= pD) on every point so any client still running an
+ * older bundle from before the multi-line chart shipped reads its line
+ * correctly — without it those clients render NaN for every coordinate
+ * during the Vercel rollout window.
  */
 function mergeGrids(
   dGrid: RawPoint[],
   rGrid: RawPoint[],
-): { ts: number; pD: number; pR: number }[] {
-  const out: { ts: number; pD: number; pR: number }[] = [];
+): { ts: number; pD: number; pR: number; p: number }[] {
+  const out: { ts: number; pD: number; pR: number; p: number }[] = [];
   let i = 0;
   let j = 0;
   while (i < dGrid.length && j < rGrid.length) {
     if (dGrid[i].ts === rGrid[j].ts) {
-      out.push({ ts: dGrid[i].ts, pD: dGrid[i].p, pR: rGrid[j].p });
+      out.push({
+        ts: dGrid[i].ts,
+        pD: dGrid[i].p,
+        pR: rGrid[j].p,
+        p: dGrid[i].p,
+      });
       i++;
       j++;
     } else if (dGrid[i].ts < rGrid[j].ts) {
