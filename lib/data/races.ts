@@ -8,8 +8,14 @@ import {
 } from "@/lib/mock-data";
 
 export type RacesSnapshot = {
+  /** P(Democrat wins) per race. */
   districtProbs: Record<string, number>;
   senateProbs: Record<string, number>;
+  /** P(Republican wins) per race. With an independent on the ballot
+   *  (e.g. NE 2026 senate, Osborn at ~34%), probDem + probRep < 1 and
+   *  the residual is P(indie wins). */
+  districtRepProbs: Record<string, number>;
+  senateRepProbs: Record<string, number>;
   coverage: {
     /** Number of districts where the DB has a Kalshi-priced row. */
     house: number;
@@ -20,6 +26,14 @@ export type RacesSnapshot = {
   };
 };
 
+type DbSnapshot = {
+  districtProbs: Record<string, number>;
+  senateProbs: Record<string, number>;
+  districtRepProbs: Record<string, number>;
+  senateRepProbs: Record<string, number>;
+  fetchedAt: number;
+};
+
 /**
  * Read every priced race out of Postgres in one query. Cheap (~10 ms),
  * but we still wrap in `unstable_cache` with a 60-second window so a
@@ -28,22 +42,40 @@ export type RacesSnapshot = {
  * The cron route refreshes the rows hourly; visitors only ever read.
  */
 const fetchFromDb = unstable_cache(
-  async () => {
+  async (): Promise<DbSnapshot> => {
     const rows = await db.select().from(prices);
     const districtProbs: Record<string, number> = {};
     const senateProbs: Record<string, number> = {};
+    const districtRepProbs: Record<string, number> = {};
+    const senateRepProbs: Record<string, number> = {};
     let maxFetchedAt = 0;
     for (const r of rows) {
-      const t = r.fetchedAt instanceof Date
-        ? r.fetchedAt.getTime()
-        : new Date(r.fetchedAt).getTime();
+      const t =
+        r.fetchedAt instanceof Date
+          ? r.fetchedAt.getTime()
+          : new Date(r.fetchedAt).getTime();
       if (t > maxFetchedAt) maxFetchedAt = t;
-      if (r.kind === "district") districtProbs[r.raceKey] = r.probDem;
-      else if (r.kind === "senate") senateProbs[r.raceKey] = r.probDem;
+      // Rows written before the prob_rep column existed have a null there;
+      // fall back to (1 - probDem) so the UI keeps rendering correctly
+      // during the deploy → first-cron-run gap.
+      const probRep = r.probRep ?? Math.max(0, Math.min(1, 1 - r.probDem));
+      if (r.kind === "district") {
+        districtProbs[r.raceKey] = r.probDem;
+        districtRepProbs[r.raceKey] = probRep;
+      } else if (r.kind === "senate") {
+        senateProbs[r.raceKey] = r.probDem;
+        senateRepProbs[r.raceKey] = probRep;
+      }
     }
-    return { districtProbs, senateProbs, fetchedAt: maxFetchedAt };
+    return {
+      districtProbs,
+      senateProbs,
+      districtRepProbs,
+      senateRepProbs,
+      fetchedAt: maxFetchedAt,
+    };
   },
-  ["races-from-db", "v1"],
+  ["races-from-db", "v2"],
   { revalidate: 60, tags: ["kalshi"] },
 );
 
@@ -54,21 +86,34 @@ const fetchFromDb = unstable_cache(
  * row (e.g. a market that hasn't traded yet) silently falls back to mock.
  */
 export async function getRaces(): Promise<RacesSnapshot> {
-  let snap: {
-    districtProbs: Record<string, number>;
-    senateProbs: Record<string, number>;
-    fetchedAt: number;
-  };
+  let snap: DbSnapshot;
   try {
     snap = await fetchFromDb();
   } catch (e) {
     console.error("[races] db read failed, using mock only:", e);
-    snap = { districtProbs: {}, senateProbs: {}, fetchedAt: 0 };
+    snap = {
+      districtProbs: {},
+      senateProbs: {},
+      districtRepProbs: {},
+      senateRepProbs: {},
+      fetchedAt: 0,
+    };
   }
+
+  // For mock data we don't track separate R probabilities — synthesize
+  // them from `1 - probDem`. Real Kalshi rows override.
+  const mockDistrictsRep = Object.fromEntries(
+    Object.entries(MOCK_DISTRICTS).map(([k, v]) => [k, 1 - v]),
+  );
+  const mockSenateRep = Object.fromEntries(
+    Object.entries(MOCK_SENATE).map(([k, v]) => [k, 1 - v]),
+  );
 
   return {
     districtProbs: { ...MOCK_DISTRICTS, ...snap.districtProbs },
     senateProbs: { ...MOCK_SENATE, ...snap.senateProbs },
+    districtRepProbs: { ...mockDistrictsRep, ...snap.districtRepProbs },
+    senateRepProbs: { ...mockSenateRep, ...snap.senateRepProbs },
     coverage: {
       house: Object.keys(snap.districtProbs).length,
       senate: Object.keys(snap.senateProbs).length,

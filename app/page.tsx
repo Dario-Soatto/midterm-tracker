@@ -44,6 +44,8 @@ export default async function HomePage() {
       <Dashboard
         districtProbs={races.districtProbs}
         senateProbs={races.senateProbs}
+        districtRepProbs={races.districtRepProbs}
+        senateRepProbs={races.senateRepProbs}
       />
     </div>
   );

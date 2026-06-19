@@ -1,5 +1,5 @@
 import "server-only";
-import { getEvent, probDemFromEvent } from "./client";
+import { getEvent, probsFromEvent } from "./client";
 import { HOUSE_TICKERS, SENATE_TICKERS } from "./catalog";
 
 export type RaceSnapshot = {
@@ -11,6 +11,9 @@ export type RaceSnapshot = {
   raceKey: string;
   /** P(Democrat wins), in [0, 1]. */
   probDem: number;
+  /** P(Republican wins), in [0, 1]. With an independent on the ballot,
+   *  probDem + probRep < 1; the residual is P(indie wins). */
+  probRep: number;
 };
 
 /**
@@ -42,9 +45,15 @@ export async function fetchAllRaceSnapshots(): Promise<RaceSnapshot[]> {
     while (cursor < tasks.length) {
       const t = tasks[cursor++];
       const event = await getEvent(t.ticker);
-      const p = probDemFromEvent(event);
+      const p = probsFromEvent(event);
       if (p !== null) {
-        out.push({ ticker: t.ticker, kind: t.kind, raceKey: t.key, probDem: p });
+        out.push({
+          ticker: t.ticker,
+          kind: t.kind,
+          raceKey: t.key,
+          probDem: p.dem,
+          probRep: p.rep,
+        });
       }
       await new Promise((r) => setTimeout(r, SPACING_MS));
     }

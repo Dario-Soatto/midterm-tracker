@@ -4,7 +4,7 @@ import type { Boundaries } from "@/lib/boundaries";
 import { STATES_BY_FIPS, SENATE_2026_STATES } from "@/lib/states";
 import {
   PARTY_LABEL,
-  leadingFromProbDem,
+  leadingFromProbs,
   partyInk,
   tintByOdds,
 } from "@/lib/colors";
@@ -25,6 +25,8 @@ type Props = {
   boundaries: Boundaries;
   districtProbs: Record<string, number>;
   senateProbs: Record<string, number>;
+  districtRepProbs: Record<string, number>;
+  senateRepProbs: Record<string, number>;
   onClose: () => void;
 };
 
@@ -33,6 +35,8 @@ export default function DetailPanel({
   boundaries,
   districtProbs,
   senateProbs,
+  districtRepProbs,
+  senateRepProbs,
   onClose,
 }: Props) {
   if (!selected) return null;
@@ -42,12 +46,13 @@ export default function DetailPanel({
     if (!d) return null;
     const meta = STATES_BY_FIPS[d.statefips];
     const p = districtProbs[d.geoid];
+    const pR = districtRepProbs[d.geoid];
     const ticker = HOUSE_TICKERS[d.geoid];
 
     return (
       <div className="px-6 py-5">
         <PanelHeader title={d.name} subtitle={meta?.name ?? ""} onClose={onClose} />
-        <ProbBar probDem={p} />
+        <ProbBar probDem={p} probRep={pR} />
         {ticker && <HistoryChart eventTicker={ticker} />}
         <div className="mt-4 grid grid-cols-2 gap-3 text-xs">
           <div>
@@ -72,11 +77,11 @@ export default function DetailPanel({
   const meta = STATES_BY_FIPS[selected.fips];
   if (!meta) return null;
 
-  const senate = SENATE_2026_STATES.has(meta.abbr)
-    ? senateProbs[meta.abbr]
-    : undefined;
+  const eligible = SENATE_2026_STATES.has(meta.abbr);
+  const senateDem = eligible ? senateProbs[meta.abbr] : undefined;
+  const senateRep = eligible ? senateRepProbs[meta.abbr] : undefined;
   const senateTicker = SENATE_TICKERS[meta.abbr];
-  const hasSenate = SENATE_2026_STATES.has(meta.abbr) && senateTicker;
+  const hasSenate = eligible && !!senateTicker;
 
   return (
     <div className="px-6 py-5">
@@ -85,12 +90,9 @@ export default function DetailPanel({
       <section className="mt-2">
         <RaceRow
           label="senate · 2026"
-          prob={senate}
-          fallback={
-            !SENATE_2026_STATES.has(meta.abbr)
-              ? "no 2026 senate election"
-              : undefined
-          }
+          probDem={senateDem}
+          probRep={senateRep}
+          fallback={eligible ? undefined : "no 2026 senate election"}
         />
         {hasSenate && <HistoryChart eventTicker={senateTicker} />}
       </section>
@@ -150,11 +152,13 @@ function PanelHeader({
 
 function RaceRow({
   label,
-  prob,
+  probDem,
+  probRep,
   fallback,
 }: {
   label: string;
-  prob: number | undefined;
+  probDem: number | undefined;
+  probRep: number | undefined;
   fallback?: string;
 }) {
   return (
@@ -166,20 +170,34 @@ function RaceRow({
         <div className="text-xs text-[var(--color-ink-mute)] italic">
           {fallback}
         </div>
-      ) : prob === undefined ? (
+      ) : probDem === undefined ? (
         <div className="text-xs text-[var(--color-ink-mute)]">no data</div>
       ) : (
-        <ProbBar probDem={prob} />
+        <ProbBar probDem={probDem} probRep={probRep} />
       )}
     </div>
   );
 }
 
-function ProbBar({ probDem }: { probDem: number | undefined }) {
+/**
+ * Two-segment bar showing P(D) and P(R) as raw market probabilities. With
+ * an independent on the ballot (NE 2026, Osborn) the two segments don't
+ * fill the whole bar — the gap is P(indie wins), rendered in a neutral
+ * tone so it's visible without giving independents their own labeled slot.
+ */
+function ProbBar({
+  probDem,
+  probRep,
+}: {
+  probDem: number | undefined;
+  probRep: number | undefined;
+}) {
   if (probDem === undefined) return null;
-  const { party, confidence } = leadingFromProbDem(probDem);
+  const pR = probRep ?? Math.max(0, 1 - probDem);
+  const { party, confidence } = leadingFromProbs(probDem, pR);
   const dPct = probDem * 100;
-  const rPct = 100 - dPct;
+  const rPct = pR * 100;
+  const indPct = Math.max(0, 100 - dPct - rPct);
   return (
     <div>
       <div className="flex items-baseline justify-between text-xs mb-1">
@@ -196,10 +214,20 @@ function ProbBar({ probDem }: { probDem: number | undefined }) {
             background: tintByOdds("D", Math.max(0.55, probDem)),
           }}
         />
+        {indPct > 0.5 && (
+          <div
+            style={{
+              width: `${indPct}%`,
+              background:
+                "color-mix(in oklab, var(--color-ind) 35%, var(--color-paper))",
+            }}
+            title={`Independent ${indPct.toFixed(0)}%`}
+          />
+        )}
         <div
           style={{
             width: `${rPct}%`,
-            background: tintByOdds("R", Math.max(0.55, 1 - probDem)),
+            background: tintByOdds("R", Math.max(0.55, pR)),
           }}
         />
       </div>

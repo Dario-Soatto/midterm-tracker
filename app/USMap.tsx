@@ -5,7 +5,7 @@ import type { Boundaries } from "@/lib/boundaries";
 import { STATES_BY_FIPS, SENATE_2026_STATES } from "@/lib/states";
 import {
   PARTY_LABEL,
-  leadingFromProbDem,
+  leadingFromProbs,
   tintByOdds,
   partyInk,
   type Party,
@@ -21,6 +21,8 @@ type Props = {
   onSelect: (s: Selection) => void;
   districtProbs: Record<string, number>;
   senateProbs: Record<string, number>;
+  districtRepProbs: Record<string, number>;
+  senateRepProbs: Record<string, number>;
 };
 
 const STROKE_DISTRICT = "color-mix(in oklab, var(--color-ink) 22%, transparent)";
@@ -40,6 +42,8 @@ export default function USMap({
   onSelect,
   districtProbs,
   senateProbs,
+  districtRepProbs,
+  senateRepProbs,
 }: Props) {
   const [hover, setHover] = useState<string | null>(null);
   const [zoom, setZoom] = useState<Zoom>(IDENTITY);
@@ -107,19 +111,29 @@ export default function USMap({
       if (!d) return null;
       const meta = STATES_BY_FIPS[d.statefips];
       const p = districtProbs[d.geoid];
+      const pR = districtRepProbs[d.geoid];
       if (p === undefined) return `${meta?.abbr ?? ""} · ${d.name}`;
-      const { party, confidence } = leadingFromProbDem(p);
+      const { party, confidence } = leadingFromProbs(p, pR ?? 1 - p);
       return `${meta?.abbr ?? ""} · ${d.name} — ${PARTY_LABEL[party]} ${(confidence * 100).toFixed(0)}%`;
     } else {
       const s = boundaries.states.find((x) => x.fips === hover);
       if (!s) return null;
       if (!SENATE_2026_STATES.has(s.abbr)) return `${s.name} — no 2026 race`;
       const p = senateProbs[s.abbr];
+      const pR = senateRepProbs[s.abbr];
       if (p === undefined) return s.name;
-      const { party, confidence } = leadingFromProbDem(p);
+      const { party, confidence } = leadingFromProbs(p, pR ?? 1 - p);
       return `${s.name} — ${PARTY_LABEL[party]} ${(confidence * 100).toFixed(0)}%`;
     }
-  }, [boundaries, hover, view, districtProbs, senateProbs]);
+  }, [
+    boundaries,
+    hover,
+    view,
+    districtProbs,
+    senateProbs,
+    districtRepProbs,
+    senateRepProbs,
+  ]);
 
   // ---- zoom / pan handlers ------------------------------------------------
 
@@ -273,7 +287,8 @@ export default function USMap({
   const districtFill = (geoid: string): string => {
     const p = districtProbs[geoid];
     if (p === undefined) return "var(--color-paper-warm)";
-    const { party, confidence } = leadingFromProbDem(p);
+    const pR = districtRepProbs[geoid] ?? 1 - p;
+    const { party, confidence } = leadingFromProbs(p, pR);
     return tintByOdds(party, confidence);
   };
 
@@ -284,7 +299,8 @@ export default function USMap({
       return "color-mix(in oklab, var(--color-ink-mute) 8%, var(--color-paper))";
     const p = senateProbs[meta.abbr];
     if (p === undefined) return "var(--color-paper-warm)";
-    const { party, confidence } = leadingFromProbDem(p);
+    const pR = senateRepProbs[meta.abbr] ?? 1 - p;
+    const { party, confidence } = leadingFromProbs(p, pR);
     return tintByOdds(party, confidence);
   };
 
@@ -517,6 +533,8 @@ export default function USMap({
               boundaries={boundaries}
               districtProbs={districtProbs}
               senateProbs={senateProbs}
+              districtRepProbs={districtRepProbs}
+              senateRepProbs={senateRepProbs}
               onClose={() => onSelect(null)}
             />
           </FloatingPopup>

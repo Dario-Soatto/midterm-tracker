@@ -9,6 +9,8 @@ import { projectBoundaries, type Boundaries } from "@/lib/boundaries";
 type Props = {
   districtProbs: Record<string, number>;
   senateProbs: Record<string, number>;
+  districtRepProbs: Record<string, number>;
+  senateRepProbs: Record<string, number>;
 };
 
 export default function Dashboard(props: Props) {

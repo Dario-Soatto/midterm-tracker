@@ -33,8 +33,29 @@ export function partyInk(party: Party): string {
   return PARTY_CSS_VAR[party];
 }
 
-/** Probability the leading party wins, given prob_dem in [0, 1]. */
+/** Probability the leading party wins, given prob_dem in [0, 1].
+ *  Confidence is reported as `1 - probDem` for the R case, which is only
+ *  correct when there are no independents. Prefer `leadingFromProbs`. */
 export function leadingFromProbDem(probDem: number): { party: Party; confidence: number } {
   if (probDem >= 0.5) return { party: "D", confidence: probDem };
   return { party: "R", confidence: 1 - probDem };
+}
+
+/**
+ * Which party is leading, given raw P(D wins) and P(R wins). With an
+ * independent on the ballot, `probDem + probRep` can fall well below 1,
+ * and the residual is P(indie wins). Confidence is the leader's own
+ * probability (not `1 - the other side`), so Nebraska reads as "R 65%",
+ * not "R 99%".
+ */
+export function leadingFromProbs(
+  probDem: number,
+  probRep: number,
+): { party: Party; confidence: number } {
+  const probInd = Math.max(0, 1 - probDem - probRep);
+  if (probInd > probDem && probInd > probRep) {
+    return { party: "I", confidence: probInd };
+  }
+  if (probDem >= probRep) return { party: "D", confidence: probDem };
+  return { party: "R", confidence: probRep };
 }

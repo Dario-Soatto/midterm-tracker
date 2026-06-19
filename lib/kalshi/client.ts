@@ -43,11 +43,15 @@ export async function getEvent(ticker: string): Promise<KalshiEvent | null> {
 /**
  * Pick P(Democrat wins) out of a binary D-vs-R event.
  *
- * Most House and Senate 2026 events are mutually-exclusive 2-market events
- * with sub-tickers `<event>-D` / `<event>-R`. A handful of older markets
- * (e.g. KXHOUSENC11-26) use `-DEM` / `-GOP` instead — same shape, different
- * naming convention. We catch both via the `-D[A-Z]*$` pattern, plus a
- * `yes_sub_title` fallback for safety.
+ * Sub-ticker conventions on Kalshi:
+ *   - `-D` / `-R`             — standard (most markets)
+ *   - `-DEM` / `-GOP`         — newer naming (KXHOUSENC11, etc.)
+ *   - `-DOSB` etc.            — independent candidate (Nebraska 2026)
+ *
+ * We must NOT treat `-DOSB` as the D market. The strict regex
+ * `/-(D|DEM)$/` matches `-D` / `-DEM` only. As a safety net we also
+ * accept a `yes_sub_title` that explicitly says "Democratic" (catches
+ * non-standard suffixes that still belong to the Dem candidate).
  *
  * Signal preference:
  *   1. last trade — the real market-clearing price. For low-volume safe
@@ -62,16 +66,44 @@ export async function getEvent(ticker: string): Promise<KalshiEvent | null> {
  *   4. wide-spread mid — last resort.
  */
 export function probDemFromEvent(event: KalshiEvent | null): number | null {
+  return probsFromEvent(event)?.dem ?? null;
+}
+
+/**
+ * Pull both P(D wins) and P(R wins) out of an event. With an independent
+ * on the ballot (e.g. NE 2026 Senate, Osborn), `dem + rep < 1` and the
+ * residual is P(indie wins). Callers must not assume `rep === 1 - dem`.
+ */
+export function probsFromEvent(
+  event: KalshiEvent | null,
+): { dem: number; rep: number } | null {
   if (!event || !event.markets || event.markets.length === 0) return null;
-  const dMarket = event.markets.find(
+  const dem = sideProb(event, "D");
+  const rep = sideProb(event, "R");
+  if (dem === null || rep === null) return null;
+  return { dem, rep };
+}
+
+const SIDE_TICKER = {
+  D: /-(D|DEM)$/,
+  R: /-(R|GOP)$/,
+} as const;
+const SIDE_TITLE = {
+  D: /democratic/i,
+  R: /republican/i,
+} as const;
+
+function sideProb(event: KalshiEvent, side: "D" | "R"): number | null {
+  const market = event.markets.find(
     (m) =>
-      /-D[A-Z]*$/.test(m.ticker) ||
-      /democratic/i.test(m.yes_sub_title ?? ""),
+      SIDE_TICKER[side].test(m.ticker) ||
+      SIDE_TITLE[side].test(m.yes_sub_title ?? ""),
   );
-  if (!dMarket) return null;
-  const bid = parseFloat(dMarket.yes_bid_dollars);
-  const ask = parseFloat(dMarket.yes_ask_dollars);
-  const last = parseFloat(dMarket.last_price_dollars);
+  if (!market) return null;
+
+  const bid = parseFloat(market.yes_bid_dollars);
+  const ask = parseFloat(market.yes_ask_dollars);
+  const last = parseFloat(market.last_price_dollars);
 
   if (Number.isFinite(last) && last > 0) return clamp(last);
 
@@ -83,7 +115,6 @@ export function probDemFromEvent(event: KalshiEvent | null): number | null {
   if (haveBid && haveAsk && ask - bid <= NARROW_SPREAD) {
     return clamp((bid + ask) / 2);
   }
-  // Wide spread, no trade — pick the side traders have actually committed to.
   if (haveBid && haveAsk && bid > 0.01 && ask >= 0.99) return clamp(bid);
   if (haveBid && haveAsk && ask < 0.99 && bid <= 0.01) return clamp(ask);
   if (haveBid && haveAsk) return clamp((bid + ask) / 2);

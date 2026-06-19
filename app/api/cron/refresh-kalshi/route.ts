@@ -66,6 +66,7 @@ export async function GET(req: NextRequest) {
         kind: s.kind,
         raceKey: s.raceKey,
         probDem: s.probDem,
+        probRep: s.probRep,
         fetchedAt,
       })),
     )
@@ -75,6 +76,7 @@ export async function GET(req: NextRequest) {
         kind: sql`excluded.kind`,
         raceKey: sql`excluded.race_key`,
         probDem: sql`excluded.prob_dem`,
+        probRep: sql`excluded.prob_rep`,
         fetchedAt: sql`excluded.fetched_at`,
       },
     });

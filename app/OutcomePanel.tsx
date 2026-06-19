@@ -18,6 +18,8 @@ type Props = {
   view: View;
   districtProbs: Record<string, number>;
   senateProbs: Record<string, number>;
+  districtRepProbs: Record<string, number>;
+  senateRepProbs: Record<string, number>;
 };
 
 const VIEW_TITLES: Record<View, string> = {
@@ -57,47 +59,83 @@ export default function OutcomePanel({
   view,
   districtProbs,
   senateProbs,
+  districtRepProbs,
+  senateRepProbs,
 }: Props) {
   const data = useMemo(() => {
-    const probs =
+    const probsD =
       view === "house"
         ? Object.values(districtProbs)
         : Object.values(senateProbs);
+    const probsR =
+      view === "house"
+        ? Object.values(districtRepProbs)
+        : Object.values(senateRepProbs);
 
-    const buckets = bucketCounts(probs);
-    const pmf = poissonBinomialPMF(probs);
-    const summary = distSummary(pmf);
+    // Bucket bar still buckets on P(D) — that's the "cook rating" framing
+    // and we don't want a separate Independent bucket per the brief.
+    const buckets = bucketCounts(probsD);
+    // D- and R-seat distributions are computed as separate Poisson-
+    // binomials over each side's individual race probabilities. With an
+    // independent on the ballot, P(D) + P(R) < 1, so summing the two
+    // expected counts no longer hits `total` exactly — the residual is
+    // E[seats won by indies], which our cron math implicitly leaves in
+    // neither party's pile.
+    const pmfD = poissonBinomialPMF(probsD);
+    const pmfR = poissonBinomialPMF(probsR);
+    const summaryD = distSummary(pmfD);
+    const summaryR = distSummary(pmfR);
 
     const baseDOffset = view === "senate" ? SENATE_BASE.D : 0;
     const baseROffset = view === "senate" ? SENATE_BASE.R : 0;
 
-    return { probs, buckets, pmf, summary, baseDOffset, baseROffset };
-  }, [view, districtProbs, senateProbs]);
+    return {
+      probsD,
+      probsR,
+      buckets,
+      pmfD,
+      pmfR,
+      summaryD,
+      summaryR,
+      baseDOffset,
+      baseROffset,
+    };
+  }, [
+    view,
+    districtProbs,
+    senateProbs,
+    districtRepProbs,
+    senateRepProbs,
+  ]);
 
   const total = VIEW_TOTAL[view];
   const majorityAt = VIEW_MAJORITY[view];
 
-  // Majority probabilities: D-majority = P(D total seats ≥ majority threshold)
-  //                        R-majority = P(R total seats ≥ majority threshold)
-  // House (435, maj=218): symmetric, no tie.
-  // Senate (100, maj=51): symmetric, with P(tie) = pmf[50 − baseD]. We use a
-  // strict-majority threshold for both so the two numbers don't double-count
-  // a 50-50 split.
+  // Majority probabilities are computed from the two marginal distributions
+  // independently. (Both events can't occur at once — D maj ≥ 51 and R maj
+  // ≥ 51 are disjoint by definition — so the marginals are sufficient.)
+  // With independents possibly winning seats, P(D maj) + P(R maj) can be
+  // less than 1 because the "indie wins enough to deny both" outcome
+  // shows up as a non-trivial residual.
   const strictMajority = view === "senate" ? 51 : majorityAt;
   let pDmaj = 0;
+  for (let k = 0; k < data.pmfD.length; k++) {
+    if (k + data.baseDOffset >= strictMajority) pDmaj += data.pmfD[k];
+  }
   let pRmaj = 0;
-  for (let k = 0; k < data.pmf.length; k++) {
-    const dSeats = k + data.baseDOffset;
-    const rSeats = total - dSeats;
-    if (dSeats >= strictMajority) pDmaj += data.pmf[k];
-    else if (rSeats >= strictMajority) pRmaj += data.pmf[k];
+  for (let k = 0; k < data.pmfR.length; k++) {
+    if (k + data.baseROffset >= strictMajority) pRmaj += data.pmfR[k];
   }
   const pTie = Math.max(0, 1 - pDmaj - pRmaj);
 
-  const dMean = data.summary.mean + data.baseDOffset;
-  const rMean = total - dMean;
+  const dMean = data.summaryD.mean + data.baseDOffset;
+  const rMean = data.summaryR.mean + data.baseROffset;
   const winnerLabel =
-    dMean >= majorityAt ? "D-leaning" : rMean >= majorityAt ? "R-leaning" : "no clear majority";
+    dMean >= majorityAt
+      ? "D-leaning"
+      : rMean >= majorityAt
+        ? "R-leaning"
+        : "no clear majority";
 
   return (
     <div>
@@ -180,15 +218,15 @@ export default function OutcomePanel({
               )}
             </div>
             <div className="text-[10px] tracking-wider text-[var(--color-ink-mute)]">
-              ±{data.summary.std.toFixed(1)} σ · 90% CI{" "}
-              {(data.summary.quantile(0.05) + data.baseDOffset).toFixed(0)}–
-              {(data.summary.quantile(0.95) + data.baseDOffset).toFixed(0)} D
+              ±{data.summaryD.std.toFixed(1)} σ · 90% CI{" "}
+              {(data.summaryD.quantile(0.05) + data.baseDOffset).toFixed(0)}–
+              {(data.summaryD.quantile(0.95) + data.baseDOffset).toFixed(0)} D
             </div>
           </div>
         </div>
 
         <Density
-          pmf={data.pmf}
+          pmf={data.pmfD}
           baseDOffset={data.baseDOffset}
           total={total}
           majorityAt={majorityAt}
